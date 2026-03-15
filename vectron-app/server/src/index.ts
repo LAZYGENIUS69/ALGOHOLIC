@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
+import path from "path";
 import cors from "cors";
 import multer from "multer";
 import AdmZip from "adm-zip";
@@ -629,6 +630,11 @@ app.get("/api/file", (req, res) => {
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "VECTRON Server" });
+});
+
+app.use(express.static(path.join(__dirname, "../../client/dist")));
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../../client/dist/index.html"));
 });
 
 app.listen(PORT, () => {

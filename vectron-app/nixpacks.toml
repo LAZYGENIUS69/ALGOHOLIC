@@ -1,0 +1,10 @@
+[phases.build]
+cmds = [
+  "npm install --prefix client",
+  "npm install --prefix server",
+  "npm run build --prefix client",
+  "cd server && npx tsc --skipLibCheck"
+]
+
+[start]
+cmd = "node vectron-app/server/dist/index.js"
