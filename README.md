@@ -1,63 +1,165 @@
 # VECTRON
+**dependency propagation engine**
 
-**Interactive Structural Code Intelligence & Safe Refactor Simulation**
+> "ChatGPT can tell you what a function does.  
+> VECTRON shows you what breaks when you change it."
 
-VECTRON is a dependency propagation engine that visualizes code structures as interactive graphs. Upload any JavaScript/TypeScript codebase and instantly see how your files, functions, classes, and methods are connected.
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-vectron--production.up.railway.app-00D9FF?style=flat-square)](https://vectron-production.up.railway.app)
+[![GitHub](https://img.shields.io/badge/GitHub-LAZYGENIUS69%2FVECTRON-white?style=flat-square&logo=github)](https://github.com/LAZYGENIUS69/VECTRON)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+
+---
+
+## What is VECTRON?
+
+VECTRON is an AI-powered codebase dependency explorer. Upload any JavaScript or TypeScript repository as a ZIP and instantly get an interactive knowledge graph of every file, function, class and their relationships.
+
+The average developer spends **58% of their time understanding code, not writing it.** VECTRON eliminates that.
+
+---
+
+## Live Demo
+
+🔗 **[vectron-production.up.railway.app](https://vectron-production.up.railway.app)**
+
+Upload any JS/TS repo as a ZIP. No signup. No setup.
+
+---
 
 ## Features
 
-- **Dependency Graph Visualization** — Sigma.js WebGL graph with ForceAtlas2 layout
-- **Blast Radius Simulation** — Select any node and see which parts of the codebase would be affected by a change
-- **Structural Impact Metrics** — Risk scoring based on cascade depth, affected nodes, and cross-module connections
-- **Code Inspector** — Click any node to view its source code with syntax highlighting
-- **AI Refactor Prompts** — Generate safe refactoring prompts based on blast radius analysis
-- **Module Clustering** — Automatic color-coding by module for visual cluster identification
+### 🔴 Blast Radius Simulation
+Click any node in the graph. VECTRON instantly runs a BFS propagation to show every downstream dependency that breaks if you change it. Color-coded by impact depth — red is direct, orange is one hop, yellow is two hops.
+
+### 🤖 AI Codebase Query
+Ask anything about your codebase in plain English. VECTRON sends a compressed graph summary to Groq (Llama 3.3 70B) and returns a precise answer with a call chain — while simultaneously highlighting the relevant nodes on the graph.
+
+### 📊 Metrics Dashboard
+Risk scores, dependency hotspots, node type distribution, top 10 most connected nodes. Instantly identifies your most fragile code.
+
+### 🔀 Process Flow Detection
+Automatically detects all execution flows in the codebase and generates Mermaid flowcharts for each one. Click any process to see the complete call chain visualized.
+
+### 📄 Codebase Intelligence Report
+One click generates a full architecture document — executive summary, component breakdown, risk assessment, onboarding guide. Powered by Groq + Cerebras fallback.
+
+### 🔧 Custom LLM Support
+Bring your own API key. Configure OpenAI, Anthropic, Groq, Cerebras, or any custom OpenAI-compatible endpoint directly in the UI.
+
+### 🧠 MCP Server — AI-Native Codebase Context
+**This is where VECTRON becomes truly powerful.**
+
+VECTRON runs as an MCP (Model Context Protocol) server on port 3002. Connect it to Claude Code, Cursor, or Antigravity and your AI coding assistant gets full dependency context while you code.
+
+```
+# Add to your MCP client
+Name: VECTRON
+URL:  http://localhost:3002/sse
+```
+
+**Available MCP Tools:**
+
+| Tool | Description |
+|------|-------------|
+| `vectron_status` | Check if a graph is loaded |
+| `vectron_blast_radius(node, depth?)` | What breaks if I change this? |
+| `vectron_get_callers(node)` | What calls this function? |
+| `vectron_get_dependencies(node)` | What does this depend on? |
+| `vectron_query(question)` | Ask anything about the codebase |
+
+**Example:**
+```
+You: "I want to refactor handleUpload. Use VECTRON to check what will break."
+
+AI (with VECTRON MCP):
+→ calls vectron_blast_radius("handleUpload")
+→ finds 8 affected files
+→ calls vectron_get_callers("handleUpload")  
+→ returns exact line numbers
+→ "Update these 8 files in this order..."
+
+AI (without VECTRON):
+→ misses 5 files
+→ your build breaks
+```
+
+---
+
+## Quick Start
+
+### Web (Instant)
+Visit **[vectron-production.up.railway.app](https://vectron-production.up.railway.app)** and upload a ZIP.
+
+### Local + MCP Setup
+```bash
+git clone https://github.com/LAZYGENIUS69/VECTRON
+cd VECTRON/vectron-app
+npm install --prefix client && npm install --prefix server
+cp .env.example server/.env
+# Add your API keys to server/.env
+npm run dev
+```
+
+Open `http://localhost:5173` — upload a ZIP — then connect MCP:
+```
+http://localhost:3002/sse
+```
+
+### Environment Variables
+```env
+GROQ_API_KEY=your_groq_key_here
+CEREBRAS_API_KEY=your_cerebras_key_here
+PORT=3001
+```
+
+Get free API keys:
+- Groq: [console.groq.com](https://console.groq.com)
+- Cerebras: [inference.cerebras.ai](https://inference.cerebras.ai)
+
+---
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18, TypeScript, Vite |
-| Graph | Sigma.js, Graphology, ForceAtlas2 |
-| Server | Express, Babel Parser (AST) |
-| Styling | Vanilla CSS |
+| Frontend | React + TypeScript + Vite |
+| Graph Rendering | Sigma.js + Graphology + ForceAtlas2 |
+| Backend | Express.js + Node.js |
+| AST Parsing | Babel (JS/TS/JSX/TSX) |
+| AI Primary | Groq — Llama 3.3 70B Versatile |
+| AI Fallback | Cerebras — Llama 3.1 8B |
+| Process Diagrams | Mermaid.js |
+| MCP Protocol | @modelcontextprotocol/sdk |
+| Deployment | Railway |
 
-## Getting Started
+---
 
-```bash
-cd vectron-app
-
-# Install dependencies
-npm run install:all
-
-# Start development server
-npm run dev
-```
-
-Open `http://localhost:5173` and upload a ZIP of any JS/TS project.
-
-## Project Structure
+## Architecture
 
 ```
-vectron-app/
-├── client/              # React frontend
-│   └── src/
-│       ├── components/  # GraphView2D, ExplorerPanel, CodeInspector, etc.
-│       └── types/       # Shared TypeScript types
-└── server/              # Express backend
-    └── src/
-        ├── parser.ts      # Babel AST parser
-        ├── graph-builder.ts # Dependency graph construction
-        └── index.ts       # Express server + zip upload endpoint
+ZIP Upload → Babel AST Parser → Graph Builder → GraphData JSON
+                                                      ↓
+                                              Sigma.js Renderer
+                                                      ↓
+                                    ForceAtlas2 Force-Directed Layout
+                                                      ↓
+                              ┌───────────────────────┴──────────────────────┐
+                              │                                               │
+                         Blast Radius                                   MCP Server
+                       BFS Simulation                                  (port 3002)
+                              │                                               │
+                         Risk Scoring                            Claude Code / Cursor
+                                                                    Antigravity
 ```
 
-## How It Works
+---
 
-1. **Upload** a ZIP of your codebase
-2. **Parse** — Server extracts AST nodes (functions, classes, methods, imports) and relationships (IMPORTS, CALLS, DEFINES)
-3. **Visualize** — Client renders the dependency graph with Sigma.js
-4. **Analyze** — Enable VECTRON mode to simulate blast radius propagation
+## Built for AgentathonX 2026
 
-## License
+VECTRON was built in 72 hours for the AgentathonX 2026 Gen AI Hackathon.
 
-MIT
+**The vision:** Every AI coding assistant should have a dependency map of your codebase before it touches a single line of code. VECTRON makes that possible.
+
+---
+
+*Made with obsession by [@LAZYGENIUS69](https://github.com/LAZYGENIUS69)*
