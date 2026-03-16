@@ -175,10 +175,14 @@ interface Props {
   showControls?:  boolean;
   showLegend?:    boolean;
   showStats?:     boolean;
+  hideEdgesOnMove?: boolean;
+  allowInvalidContainer?: boolean;
+  renderEdgeLabels?: boolean;
+  enableEdgeEvents?: boolean;
 }
 
 export default function GraphView2D({
-  data, vectronMode, fileViewMode, blastIds, depthMap, selectedId, focusedFileId, onNodeClick, onFileView, nodeFilters, edgeFilters, queryIds, interactive = true, showControls = true, showLegend = true, showStats = true,
+  data, vectronMode, fileViewMode, blastIds, depthMap, selectedId, focusedFileId, onNodeClick, onFileView, nodeFilters, edgeFilters, queryIds, interactive = true, showControls = true, showLegend = true, showStats = true, hideEdgesOnMove = true, allowInvalidContainer = false, renderEdgeLabels = false, enableEdgeEvents = false,
 }: Props) {
 
   /* ─── refs ─────────────────────────────────────────────────────── */
@@ -387,10 +391,13 @@ export default function GraphView2D({
       labelRenderedSizeThreshold: 8,
       labelDensity:               0.12,
       labelGridCellSize:          65,
+      renderEdgeLabels,
       defaultEdgeType:    'curved',
       edgeProgramClasses: { curved: EdgeCurveProgram },
       defaultEdgeColor:   '#1f2937',
-      hideEdgesOnMove: true,
+      hideEdgesOnMove,
+      enableEdgeEvents,
+      allowInvalidContainer,
       minCameraRatio:  0.002,
       maxCameraRatio:  50,
       zIndex:          true,
@@ -411,15 +418,6 @@ export default function GraphView2D({
         const query    = queryRef.current;
         const origClr  = attrs.color as string;
         const origSize = attrs.size  as number;
-
-        // ── AI Query highlighting ──
-        if (query.size > 0 && !isBlast) {
-          if (query.has(nid)) {
-            return { ...out, color: '#FFFFFF', size: origSize * 1.8, zIndex: 3, highlighted: true };
-          } else {
-            return { ...out, color: attenuate(origClr, 0.12), size: origSize * 0.4, zIndex: 0 };
-          }
-        }
 
         // ── Blast-radius overlay ──
         if (isBlast && blast.size > 0) {
@@ -447,6 +445,15 @@ export default function GraphView2D({
           return { ...out, color: attenuate(origClr, 0.20), size: origSize * 0.5, zIndex: 0 };
         }
 
+        // ── AI Query highlighting ──
+        if (query.size > 0 && !isBlast) {
+          if (query.has(nid)) {
+            return { ...out, color: '#FFFFFF', size: origSize * 1.8, zIndex: 3, highlighted: true };
+          } else {
+            return { ...out, color: attenuate(origClr, 0.12), size: origSize * 0.4, zIndex: 0 };
+          }
+        }
+
         return out;
       },
 
@@ -468,14 +475,6 @@ export default function GraphView2D({
         if (!g) return out;
         const [src, tgt] = g.extremities(eid);
 
-        // ── AI Query highlighting ──
-        if (query.size > 0 && !isV) {
-          if (query.has(src) && query.has(tgt)) {
-            return { ...out, color: '#FFFFFF44', size: (attrs.size as number) * 2, zIndex: 2 };
-          }
-          return { ...out, color: '#06060a', size: 0.1, zIndex: 0 };
-        }
-
         if (isV && blast.size > 0) {
           const sIn = blast.has(src) || src === sel;
           const tIn = blast.has(tgt) || tgt === sel;
@@ -488,6 +487,14 @@ export default function GraphView2D({
             return { ...out, color: brighten(attrs.color as string, 1.5), size: Math.max(2, (attrs.size as number) * 3), zIndex: 2 };
           }
           return { ...out, color: attenuate(attrs.color as string, 0.08), size: 0.2, zIndex: 0 };
+        }
+
+        // ── AI Query highlighting ──
+        if (query.size > 0 && !isV) {
+          if (query.has(src) && query.has(tgt)) {
+            return { ...out, color: '#FFFFFF44', size: (attrs.size as number) * 2, zIndex: 2 };
+          }
+          return { ...out, color: '#06060a', size: 0.1, zIndex: 0 };
         }
 
         return out;
@@ -534,6 +541,8 @@ export default function GraphView2D({
 
     sigma.on('clickNode',  ({ node }) => {
       if (!interactiveRef.current) return;
+      const attrs = graph.getNodeAttributes(node);
+      console.log('Clicked node:', attrs.label ?? node);
       clickRef.current(node);
       if (fileViewModeRef.current) {
         fileViewRef.current(node);

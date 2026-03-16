@@ -1769,6 +1769,13 @@ body {
     min-width: 0;
 }
 
+.ask-ai-graph-pane-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
 .ask-ai-pane-header {
     display: flex;
     align-items: flex-start;
@@ -2048,21 +2055,33 @@ body {
     flex: 1;
     min-height: 0;
     padding: 22px;
+    pointer-events: auto;
 }
 
 .ask-ai-mini-graph > :first-child {
+    position: relative;
+    z-index: 1;
     border: 1px solid rgba(0, 217, 255, 0.12);
     border-radius: 20px;
     overflow: hidden;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    pointer-events: auto;
 }
 
-.ask-ai-graph-overlay {
-    position: absolute;
-    inset: 22px;
-    border-radius: 20px;
-    background: transparent;
-    z-index: 20;
+.ask-ai-mini-graph canvas {
+    pointer-events: auto;
+}
+
+.ask-ai-node-intel-shell {
+    min-height: 250px;
+    max-height: 340px;
+    overflow-y: auto;
+    border-top: 1px solid rgba(0, 217, 255, 0.1);
+    background: rgba(3, 9, 19, 0.72);
+}
+
+.ask-ai-node-intel-shell .panel-section {
+    border-bottom: none;
 }
 
 .metrics-dashboard {

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { GraphData, LLMConfig, LLMProvider } from '../types/graph';
 import { queryCodebase } from '../lib/api';
 import GraphView2D from './GraphView2D';
+import PromptPanel from './PromptPanel';
 
 interface Message {
     role: 'user' | 'ai';
@@ -151,6 +152,7 @@ export default function QueryPanel({
     const [loading, setLoading] = useState(false);
     const [hasResult, setHasResult] = useState(false);
     const [highlightedNodeIds, setHighlightedNodeIds] = useState<string[]>([]);
+    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [showApiKey, setShowApiKey] = useState(false);
     const [savedConfig, setSavedConfig] = useState<LLMConfig>(DEFAULT_LLM_CONFIG);
@@ -173,6 +175,10 @@ export default function QueryPanel({
         CONTAINS: true,
     }), []);
     const highlightedSet = useMemo(() => new Set(highlightedNodeIds), [highlightedNodeIds]);
+    const selectedNode = useMemo(
+        () => (selectedNodeId ? graph.nodes.find((node) => node.id === selectedNodeId) ?? null : null),
+        [graph.nodes, selectedNodeId],
+    );
     const customConfigActive = useMemo(() => isCustomConfigActive(savedConfig), [savedConfig]);
     const canSaveConfig = useMemo(() => {
         if (draftConfig.provider === 'auto') return false;
@@ -467,27 +473,41 @@ export default function QueryPanel({
                     <div>
                         <h3 className="ask-ai-graph-title">RELEVANT STRUCTURE</h3>
                         <p className="ask-ai-subtitle">
-                            AI-highlighted nodes appear in white for quick visual verification.
+                            {selectedNode
+                                ? `Selected node: ${selectedNode.label}`
+                                : 'AI-highlighted nodes appear in white for quick visual verification.'}
                         </p>
                     </div>
                 </div>
-                <div className="ask-ai-mini-graph">
-                    <GraphView2D
-                        data={graph}
-                        vectronMode={false}
-                        fileViewMode={false}
-                        blastIds={new Set<string>()}
-                        depthMap={new Map<string, number>()}
-                        selectedId={null}
-                        focusedFileId={null}
-                        onNodeClick={() => undefined}
-                        onFileView={() => undefined}
-                        nodeFilters={allNodeFilters}
-                        edgeFilters={allEdgeFilters}
-                        queryIds={highlightedSet}
-                        interactive={false}
-                    />
-                    <div className="ask-ai-graph-overlay" aria-hidden="true" />
+                <div className="ask-ai-graph-pane-body">
+                    <div className="ask-ai-mini-graph">
+                        <GraphView2D
+                            data={graph}
+                            vectronMode={false}
+                            fileViewMode={false}
+                            blastIds={new Set<string>()}
+                            depthMap={new Map<string, number>()}
+                            selectedId={selectedNodeId}
+                            focusedFileId={null}
+                            onNodeClick={(id) => setSelectedNodeId(id || null)}
+                            onFileView={() => undefined}
+                            nodeFilters={allNodeFilters}
+                            edgeFilters={allEdgeFilters}
+                            queryIds={highlightedSet}
+                            interactive
+                            hideEdgesOnMove={false}
+                            allowInvalidContainer={false}
+                            renderEdgeLabels={false}
+                            enableEdgeEvents={false}
+                        />
+                    </div>
+
+                    <div className="ask-ai-node-intel-shell">
+                        <PromptPanel
+                            selectedNode={selectedNode}
+                            graph={graph}
+                        />
+                    </div>
                 </div>
             </section>
         </div>
