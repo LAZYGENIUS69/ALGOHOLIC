@@ -181,12 +181,4 @@ graph TD
 
 ---
 
-## Built for DSOC 2026
-
-VECTRON was built in 72 hours for the DSOC 2026 Gen AI Hackathon.
-
-**The vision:** Every AI coding assistant should have a dependency map of your codebase before it touches a single line of code. VECTRON makes that possible.
-
----
-
 *Made with obsession by [@LAZYGENIUS69](https://github.com/LAZYGENIUS69)*
