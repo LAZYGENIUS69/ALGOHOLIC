@@ -1,11 +1,11 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { GraphData } from './types/graph';
 import { computeBlast } from './lib/risk';
 import Header from './components/Header';
 import UploadZone from './components/UploadZone';
 import DependencyCanvas from './components/GraphView2D';
 import MetricsPanel from './components/MetricsPanel';
-import PromptPanel from './components/PromptPanel';
+import NodeIntelligence from './components/NodeIntelligence';
 import ExplorerPanel from './components/ExplorerPanel';
 import CodeInspector from './components/CodeInspector';
 import FilterPanel from './components/FilterPanel';
@@ -16,13 +16,17 @@ import MetricsDashboard from './components/MetricsDashboard';
 
 type AppTab = 'graph' | 'processes' | 'ask-ai' | 'metrics' | 'report';
 type LeftSidebarTab = 'explorer' | 'filters';
+const MOBILE_BREAKPOINT_QUERY = '(max-width: 768px)';
 
 export default function App() {
+    const mobileSheetTouchStartY = useRef(0);
+    const mobileSheetTouchStartX = useRef(0);
     const [graph, setGraph] = useState<GraphData | null>(null);
     const [activeTab, setActiveTab] = useState<AppTab>('graph');
     const [leftSidebarTab, setLeftSidebarTab] = useState<LeftSidebarTab>('explorer');
     const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
     const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
+    const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches);
     const [selectedNodeForProcess, setSelectedNodeForProcess] = useState<string | null>(null);
     const [vectronMode, setVectronMode] = useState(false);
     const [fileViewMode, setFileViewMode] = useState(false);
@@ -50,6 +54,22 @@ export default function App() {
         (window as Window & { setGraphDebug?: (data: GraphData) => void }).setGraphDebug = (data: GraphData) => setGraph(data);
     }, []);
 
+    useEffect(() => {
+        const mediaQuery = window.matchMedia(MOBILE_BREAKPOINT_QUERY);
+        const updateViewport = (matches: boolean) => setIsMobile(matches);
+        updateViewport(mediaQuery.matches);
+
+        const handleChange = (event: MediaQueryListEvent) => updateViewport(event.matches);
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
+    }, []);
+
+    useEffect(() => {
+        if (!graph) return;
+        setLeftSidebarOpen(!isMobile);
+        setRightSidebarOpen(!isMobile);
+    }, [graph, isMobile]);
+
     const blast = selectedId && graph && vectronMode
         ? computeBlast(graph, selectedId)
         : null;
@@ -63,6 +83,9 @@ export default function App() {
             setSelectedId(null);
             setSelectedNodeForProcess(null);
             setInspectorOpen(false);
+            if (isMobile) {
+                setRightSidebarOpen(false);
+            }
             return;
         }
 
@@ -70,11 +93,14 @@ export default function App() {
         const node = graph?.nodes.find((item) => item.id === id);
         if (node?.fileId) setFocusedFileId(node.fileId);
         setSelectedNodeForProcess(node?.label ?? null);
+        if (isMobile) {
+            setRightSidebarOpen(true);
+        }
 
         if (!fileViewMode) {
             setInspectorOpen(false);
         }
-    }, [fileViewMode, graph]);
+    }, [fileViewMode, graph, isMobile]);
 
     const handleFileView = useCallback((id: string) => {
         const node = graph?.nodes.find((item) => item.id === id);
@@ -107,9 +133,9 @@ export default function App() {
         setQueryNodeIds(new Set());
         setSelectedNodeForProcess(null);
         setLeftSidebarTab('explorer');
-        setLeftSidebarOpen(true);
-        setRightSidebarOpen(true);
-    }, []);
+        setLeftSidebarOpen(!isMobile);
+        setRightSidebarOpen(!isMobile);
+    }, [isMobile]);
 
     const handleUploadNew = useCallback(() => {
         setGraph(null);
@@ -122,9 +148,9 @@ export default function App() {
         setQueryNodeIds(new Set());
         setSelectedNodeForProcess(null);
         setLeftSidebarTab('explorer');
-        setLeftSidebarOpen(true);
-        setRightSidebarOpen(true);
-    }, []);
+        setLeftSidebarOpen(!isMobile);
+        setRightSidebarOpen(false);
+    }, [isMobile]);
 
     const handleTraceProcesses = useCallback(() => {
         if (!selectedNode?.label) return;
@@ -146,6 +172,25 @@ export default function App() {
         setInspectorOpen(false);
         setSelectedNodeForProcess(null);
         setQueryNodeIds(new Set());
+        if (isMobile) {
+            setRightSidebarOpen(false);
+        }
+    }, [isMobile]);
+
+    const handleMobileSheetTouchStart = useCallback((event: any) => {
+        mobileSheetTouchStartY.current = event.touches[0]?.clientY ?? 0;
+        mobileSheetTouchStartX.current = event.touches[0]?.clientX ?? 0;
+    }, []);
+
+    const handleMobileSheetTouchEnd = useCallback((event: any) => {
+        const endY = event.changedTouches[0]?.clientY ?? 0;
+        const endX = event.changedTouches[0]?.clientX ?? 0;
+        const deltaY = endY - mobileSheetTouchStartY.current;
+        const deltaX = Math.abs(endX - mobileSheetTouchStartX.current);
+
+        if (deltaY > 80 && deltaY > deltaX) {
+            setRightSidebarOpen(false);
+        }
     }, []);
 
     const emptyTabState = (
@@ -157,9 +202,21 @@ export default function App() {
     );
 
     const graphTab = (
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+        <div className="graph-workspace">
+            {graph && isMobile && (leftSidebarOpen || rightSidebarOpen) && (
+                <button
+                    type="button"
+                    className="workspace-mobile-backdrop"
+                    aria-label="Close mobile panels"
+                    onClick={() => {
+                        setLeftSidebarOpen(false);
+                        setRightSidebarOpen(false);
+                    }}
+                />
+            )}
+
             {graph && leftSidebarOpen && (
-                <div className="explorer-panel workspace-sidebar">
+                <div className={`explorer-panel workspace-sidebar ${isMobile ? 'is-mobile-drawer' : ''}`}>
                     <div className="workspace-sidebar-tabs">
                         <button
                             type="button"
@@ -217,7 +274,7 @@ export default function App() {
                 </div>
             )}
 
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minWidth: 0 }}>
+            <div className="graph-stage">
                 {!graph ? (
                     <UploadZone onGraph={handleGraph} />
                 ) : (
@@ -226,26 +283,26 @@ export default function App() {
                             <button
                                 type="button"
                                 className="graph-edge-toggle graph-edge-toggle-left"
-                                aria-label="Open left panel"
+                                aria-label={isMobile ? 'Open navigation drawer' : 'Open left panel'}
                                 onClick={() => setLeftSidebarOpen(true)}
                             >
                                 <span className="graph-edge-toggle-arrow" aria-hidden="true">
-                                    &#8250;
+                                    {isMobile ? '\u2630' : '\u203a'}
                                 </span>
-                                <span className="graph-edge-toggle-label">Explorer</span>
+                                <span className="graph-edge-toggle-label">{isMobile ? 'Menu' : 'Explorer'}</span>
                             </button>
                         )}
 
-                        {!rightSidebarOpen && (
+                        {!rightSidebarOpen && (!isMobile || !!selectedNode) && (
                             <button
                                 type="button"
                                 className="graph-edge-toggle graph-edge-toggle-right"
-                                aria-label="Open right panel"
+                                aria-label={isMobile ? 'Open node intelligence panel' : 'Open right panel'}
                                 onClick={() => setRightSidebarOpen(true)}
                             >
-                                <span className="graph-edge-toggle-label">Insights</span>
+                                <span className="graph-edge-toggle-label">{isMobile ? 'Inspect' : 'Insights'}</span>
                                 <span className="graph-edge-toggle-arrow" aria-hidden="true">
-                                    &#8249;
+                                    {isMobile ? '\u25b2' : '\u2039'}
                                 </span>
                             </button>
                         )}
@@ -269,8 +326,22 @@ export default function App() {
             </div>
 
             {graph && rightSidebarOpen && (
-                <aside className="graph-right-panel">
+                <aside
+                    className={`graph-right-panel ${isMobile ? 'is-mobile-sheet' : ''}`}
+                    onTouchStart={isMobile ? handleMobileSheetTouchStart : undefined}
+                    onTouchEnd={isMobile ? handleMobileSheetTouchEnd : undefined}
+                >
                     <div className="graph-right-panel-header">
+                        {isMobile && (
+                            <button
+                                type="button"
+                                className="graph-right-panel-handle"
+                                aria-label="Dismiss node intelligence panel"
+                                onClick={() => setRightSidebarOpen(false)}
+                            >
+                                <span />
+                            </button>
+                        )}
                         <span className="graph-right-panel-title">Node Intelligence</span>
                         <button
                             type="button"
@@ -283,9 +354,12 @@ export default function App() {
                     </div>
                     <div className="graph-right-panel-scroll">
                         {selectedNode && (
-                            <div className="panel-section" style={{ paddingBottom: 0 }}>
+                            <div className="panel-section graph-back-nav-shell">
                                 <button className="back-nav-btn" onClick={handleBackToGraph}>
-                                    &larr; Back to graph
+                                    <span className="back-nav-btn-icon" aria-hidden="true">
+                                        &larr;
+                                    </span>
+                                    <span className="back-nav-btn-label">Back to graph</span>
                                 </button>
                             </div>
                         )}
@@ -298,7 +372,7 @@ export default function App() {
                             crossModuleEdgesTotal={graph.crossModuleEdges}
                             onTraceProcesses={selectedNode ? handleTraceProcesses : undefined}
                         />
-                        <PromptPanel
+                        <NodeIntelligence
                             selectedNode={selectedNode}
                             graph={graph}
                         />
@@ -353,7 +427,7 @@ export default function App() {
     };
 
     return (
-        <div style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#0A0F1A' }}>
+        <div className="app-shell">
             <Header
                 vectronMode={vectronMode}
                 onToggleVectron={() => setVectronMode((value) => !value)}

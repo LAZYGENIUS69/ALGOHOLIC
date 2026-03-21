@@ -1,17 +1,63 @@
 import type { DetectedProcess, GraphData, LLMConfig } from '../types/graph';
 
 const BASE = '/api';
+const HEALTH_ENDPOINT = '/health';
+
+async function isLocalBackendReachable(): Promise<boolean> {
+    try {
+        const res = await fetch(HEALTH_ENDPOINT, { method: 'GET' });
+        return res.ok;
+    } catch {
+        return false;
+    }
+}
+
+async function buildApiError(res: Response): Promise<Error> {
+    const contentType = res.headers.get('content-type') || '';
+    let message = res.statusText || `Server error ${res.status}`;
+
+    if (contentType.includes('application/json')) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        message = body?.error ?? message;
+    } else {
+        const text = await res.text().catch(() => '');
+        if (text.trim()) {
+            message = text.trim();
+        }
+    }
+
+    if (
+        res.status >= 500 &&
+        message.toLowerCase().includes('internal server error') &&
+        !(await isLocalBackendReachable())
+    ) {
+        return new Error('VECTRON backend is not reachable. Start the server in `vectron-app` and refresh the page.');
+    }
+
+    return new Error(message || `Server error ${res.status}`);
+}
+
+async function fetchFromApi(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    try {
+        return await fetch(input, init);
+    } catch (error) {
+        if (!(await isLocalBackendReachable())) {
+            throw new Error('VECTRON backend is not reachable. Start the server in `vectron-app` and refresh the page.');
+        }
+
+        throw error instanceof Error ? error : new Error('Network request failed');
+    }
+}
 
 /** Upload a zip file and receive the parsed graph JSON. */
 export async function uploadZip(file: File): Promise<GraphData> {
     const form = new FormData();
     form.append('file', file);
 
-    const res = await fetch(`${BASE}/upload`, { method: 'POST', body: form });
+    const res = await fetchFromApi(`${BASE}/upload`, { method: 'POST', body: form });
 
     if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(body.error ?? `Server error ${res.status}`);
+        throw await buildApiError(res);
     }
 
     return res.json() as Promise<GraphData>;
@@ -19,27 +65,26 @@ export async function uploadZip(file: File): Promise<GraphData> {
 
 /** Fetch source code of a specific file from the server cache. */
 export async function fetchFile(filePath: string): Promise<string> {
-    const res = await fetch(`${BASE}/file?path=${encodeURIComponent(filePath)}`);
+    const res = await fetchFromApi(`${BASE}/file?path=${encodeURIComponent(filePath)}`);
     if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(body.error ?? `Server error ${res.status}`);
+        throw await buildApiError(res);
     }
     const data = await res.json();
     return data.content;
 }
 
 export async function detectProcesses(graphData: GraphData, focusNode?: string | null): Promise<DetectedProcess[]> {
-    const res = await fetch(`${BASE}/processes`, {
+    const res = await fetchFromApi(`${BASE}/processes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ graphData, focusNode: focusNode || undefined }),
     });
 
-    const body = await res.json().catch(() => ({ error: res.statusText, processes: [] }));
     if (!res.ok) {
-        throw new Error(body.error ?? `Server error ${res.status}`);
+        throw await buildApiError(res);
     }
 
+    const body = await res.json().catch(() => ({ processes: [] }));
     return Array.isArray(body.processes) ? body.processes : [];
 }
 
@@ -48,21 +93,20 @@ export async function queryCodebase(
     question: string,
     llmConfig?: LLMConfig,
 ): Promise<{ explanation: string; relevantNodes: string[] }> {
-    const res = await fetch(`${BASE}/query`, {
+    const res = await fetchFromApi(`${BASE}/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ graphData, question, llmConfig }),
     });
 
+    if (!res.ok) {
+        throw await buildApiError(res);
+    }
+
     const body = await res.json().catch(() => ({
         explanation: '',
         relevantNodes: [],
-        error: res.statusText,
     }));
-
-    if (!res.ok) {
-        throw new Error(body.error ?? `Server error ${res.status}`);
-    }
 
     return {
         explanation: typeof body.explanation === 'string' ? body.explanation : '',
@@ -76,35 +120,34 @@ export async function fetchNodeSummary(
     label: string,
     type: string,
 ): Promise<string> {
-    const res = await fetch(`${BASE}/node-summary`, {
+    const res = await fetchFromApi(`${BASE}/node-summary`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ graphData, nodeId, label, type }),
     });
 
+    if (!res.ok) {
+        throw await buildApiError(res);
+    }
+
     const body = await res.json().catch(() => ({
         summary: '',
-        error: res.statusText,
     }));
-
-    if (!res.ok) {
-        throw new Error(body.error ?? `Server error ${res.status}`);
-    }
 
     return typeof body.summary === 'string' ? body.summary : '';
 }
 
 export async function generateReport(graphData: GraphData): Promise<string> {
-    const res = await fetch(`${BASE}/report`, {
+    const res = await fetchFromApi(`${BASE}/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ graphData }),
     });
 
-    const body = await res.json().catch(() => ({ error: res.statusText, report: '' }));
     if (!res.ok) {
-        throw new Error(body.error ?? `Server error ${res.status}`);
+        throw await buildApiError(res);
     }
 
+    const body = await res.json().catch(() => ({ report: '' }));
     return typeof body.report === 'string' ? body.report : '';
 }

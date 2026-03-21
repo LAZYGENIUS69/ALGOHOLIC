@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-        "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+        "dev": "node -r ts-node/register/transpile-only src/index.ts",
         "build": "tsc --skipLibCheck && node -e \"const fs=require('fs');fs.mkdirSync('dist',{recursive:true});fs.copyFileSync('src/landing.html','dist/landing.html');\"",
         "start": "node dist/index.js"
     },

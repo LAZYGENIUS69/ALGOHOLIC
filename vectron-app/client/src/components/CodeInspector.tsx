@@ -112,9 +112,14 @@ export default function CodeInspector({ fileId, startLine, endLine, isOpen, onCl
                         minWidth: 0,
                         maxWidth: 'calc(100% - 48px)',
                     }}>
-                        <button className="back-nav-btn" onClick={onClose}>
-                            &larr; Close File
-                        </button>
+                        <div className="code-inspector-back-nav">
+                            <button className="back-nav-btn" onClick={onClose}>
+                                <span className="back-nav-btn-icon" aria-hidden="true">
+                                    &larr;
+                                </span>
+                                <span className="back-nav-btn-label">Close file</span>
+                            </button>
+                        </div>
                         <span style={{
                             fontFamily: 'JetBrains Mono, monospace',
                             fontSize: 13,

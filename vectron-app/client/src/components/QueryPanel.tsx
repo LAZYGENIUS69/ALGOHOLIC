@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { GraphData, LLMConfig, LLMProvider } from '../types/graph';
 import { queryCodebase } from '../lib/api';
 import GraphView2D from './GraphView2D';
-import PromptPanel from './PromptPanel';
+import NodeIntelligence from './NodeIntelligence';
 
 interface Message {
     role: 'user' | 'ai';
@@ -294,9 +294,6 @@ export default function QueryPanel({
                 <div className="ask-ai-pane-header">
                     <div className="ask-ai-header-copy">
                         <h2 className="ask-ai-title">ASK YOUR CODEBASE</h2>
-                        <p className="ask-ai-subtitle">
-                            Probe call chains, dependency flow, and architectural behavior in plain language.
-                        </p>
                         <p className="ask-ai-provider-line">Powered by: {poweredByLabel}</p>
                     </div>
                     <div className="ask-ai-header-actions">
@@ -441,7 +438,12 @@ export default function QueryPanel({
 
                     {loading && (
                         <div className="query-loading">
-                            ANALYZING...
+                            <span className="query-loading-label">ANALYZING...</span>
+                            <span className="query-loading-dots" aria-hidden="true">
+                                <span />
+                                <span />
+                                <span />
+                            </span>
                         </div>
                     )}
                 </div>
@@ -462,7 +464,7 @@ export default function QueryPanel({
                             className="query-send-btn ask-ai-send-btn"
                             disabled={loading || !question.trim()}
                         >
-                            SEND
+                            &rarr;
                         </button>
                     </form>
                 </div>
@@ -503,7 +505,7 @@ export default function QueryPanel({
                     </div>
 
                     <div className="ask-ai-node-intel-shell">
-                        <PromptPanel
+                        <NodeIntelligence
                             selectedNode={selectedNode}
                             graph={graph}
                         />

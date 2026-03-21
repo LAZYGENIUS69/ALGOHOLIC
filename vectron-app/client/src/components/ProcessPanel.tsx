@@ -167,10 +167,10 @@ export default function ProcessPanel({ graph, selectedNode = null }: ProcessPane
                     disabled={loading}
                 >
                     {loading
-                        ? 'Detecting...'
+                        ? 'DETECTING...'
                         : selectedNode
-                            ? 'Refresh Focused Processes'
-                            : 'Detect All Processes'}
+                            ? 'REFRESH FOCUSED PROCESSES'
+                            : 'DETECT ALL PROCESSES'}
                 </button>
 
                 <div className="process-list">
@@ -203,9 +203,6 @@ export default function ProcessPanel({ graph, selectedNode = null }: ProcessPane
             <section className="process-main">
                 {selectedProcess ? (
                     <>
-                        <button className="back-nav-btn" onClick={() => setSelectedIndex(null)}>
-                            &larr; All Processes
-                        </button>
                         <div className="process-main-header">
                             <div>
                                 <h2>{selectedProcess.name}</h2>
@@ -231,7 +228,7 @@ export default function ProcessPanel({ graph, selectedNode = null }: ProcessPane
                     </>
                 ) : (
                     <div className="process-main-empty">
-                        Select a detected process to inspect its Mermaid flowchart and explanation.
+                        Select a process to inspect
                     </div>
                 )}
             </section>

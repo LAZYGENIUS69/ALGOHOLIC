@@ -14,96 +14,73 @@ interface HeaderProps {
 export default function Header({
     vectronMode, onToggleVectron, fileViewMode, onToggleFileView, onUploadNew, hasGraph, nodeCount, edgeCount, activeTab, onTabChange,
 }: HeaderProps) {
+    const tabs: Array<{ id: HeaderProps['activeTab']; label: string; shortLabel: string }> = [
+        { id: 'graph', label: 'GRAPH', shortLabel: 'GRAPH' },
+        { id: 'processes', label: 'PROCESSES', shortLabel: 'FLOWS' },
+        { id: 'ask-ai', label: 'ASK AI', shortLabel: 'AI' },
+        { id: 'metrics', label: 'METRICS', shortLabel: 'STATS' },
+        { id: 'report', label: 'REPORT', shortLabel: 'DOCS' },
+    ];
+
     return (
         <header className="header">
-            {/* Brand */}
-            <div className="header-brand">
-                <span className="header-brand-dot" />
-                VECTRON
-                <span className="header-tagline">dependency propagation engine</span>
-            </div>
-
-            {/* Graph stats badge */}
-            {hasGraph && (
-                <div className="graph-badge">
-                    <span>{nodeCount}</span>
-                    <span className="badge-sep">nodes</span>
-                    <span className="badge-div">·</span>
-                    <span>{edgeCount}</span>
-                    <span className="badge-sep">edges</span>
+            <div className="header-section header-section-left">
+                <div className="header-brand">
+                    <span className="header-brand-dot" />
+                    <span className="header-brand-wordmark">VECTRON</span>
+                    <span className="header-tagline">dependency propagation engine</span>
                 </div>
-            )}
+
+                {hasGraph && (
+                    <div className="graph-badge">
+                        <span>{nodeCount} nodes</span>
+                        <span className="badge-div">·</span>
+                        <span>{edgeCount} edges</span>
+                    </div>
+                )}
+            </div>
 
             <div className="header-tabs" role="tablist" aria-label="Primary views">
-                <button
-                    className={`header-tab ${activeTab === 'graph' ? 'active' : ''}`}
-                    onClick={() => onTabChange('graph')}
-                    role="tab"
-                    aria-selected={activeTab === 'graph'}
-                >
-                    GRAPH
-                </button>
-                <button
-                    className={`header-tab ${activeTab === 'processes' ? 'active' : ''}`}
-                    onClick={() => onTabChange('processes')}
-                    role="tab"
-                    aria-selected={activeTab === 'processes'}
-                >
-                    PROCESSES
-                </button>
-                <button
-                    className={`header-tab ${activeTab === 'ask-ai' ? 'active' : ''}`}
-                    onClick={() => onTabChange('ask-ai')}
-                    role="tab"
-                    aria-selected={activeTab === 'ask-ai'}
-                >
-                    ASK AI
-                </button>
-                <button
-                    className={`header-tab ${activeTab === 'metrics' ? 'active' : ''}`}
-                    onClick={() => onTabChange('metrics')}
-                    role="tab"
-                    aria-selected={activeTab === 'metrics'}
-                >
-                    METRICS
-                </button>
-                <button
-                    className={`header-tab ${activeTab === 'report' ? 'active' : ''}`}
-                    onClick={() => onTabChange('report')}
-                    role="tab"
-                    aria-selected={activeTab === 'report'}
-                >
-                    REPORT
-                </button>
+                {tabs.map((tab) => (
+                    <button
+                        key={tab.id}
+                        className={`header-tab ${activeTab === tab.id ? 'active' : ''}`}
+                        onClick={() => onTabChange(tab.id)}
+                        role="tab"
+                        aria-selected={activeTab === tab.id}
+                    >
+                        <span className="header-tab-label">{tab.label}</span>
+                        <span className="header-tab-label-mobile">{tab.shortLabel}</span>
+                    </button>
+                ))}
             </div>
 
-            {/* Actions */}
-            <div className="header-actions">
+            <div className="header-section header-section-right">
                 {hasGraph && (
                     <>
                         <button
-                            className={`btn ${vectronMode ? 'active' : ''}`}
+                            className={`btn btn-simulation ${vectronMode ? 'active' : ''}`}
                             onClick={onToggleVectron}
                             title={vectronMode ? 'Disable VECTRON simulation mode' : 'Enable VECTRON simulation mode'}
                         >
-                            <span
-                                className="btn-dot"
-                                style={{ background: vectronMode ? '#F59E0B' : undefined }}
-                            />
-                            SIMULATION {vectronMode ? 'ON' : 'OFF'}
+                            <span className="btn-dot" />
+                            <span className="btn-label">SIMULATION</span>
+                            <span className="btn-icon-label" aria-hidden="true">S</span>
                         </button>
 
                         <button
-                            className={`btn ${fileViewMode ? 'cyan-active' : ''}`}
+                            className={`btn btn-file-view ${fileViewMode ? 'cyan-active' : ''}`}
                             onClick={onToggleFileView}
                             title={fileViewMode ? 'Disable automatic code file opening' : 'Enable automatic code file opening'}
                         >
                             <span className="btn-dot" />
-                            FILE VIEW {fileViewMode ? 'ON' : 'OFF'}
+                            <span className="btn-label">FILE VIEW</span>
+                            <span className="btn-icon-label" aria-hidden="true">F</span>
                         </button>
 
-                        <button className="btn" onClick={onUploadNew} title="Upload a new repository">
-                            Upload New
+                        <button className="btn btn-upload" onClick={onUploadNew} title="Upload a new repository">
+                            <span className="btn-label">Upload New</span>
+                            <span className="btn-icon-label" aria-hidden="true">+</span>
                         </button>
                     </>
                 )}
