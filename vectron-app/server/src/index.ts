@@ -19,8 +19,10 @@ const PORT = process.env.PORT || 3001;
 const groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const cerebrasClient = new Cerebras({ apiKey: process.env.CEREBRAS_API_KEY });
 
-const MAX_FILE_BYTES = 500 * 1024;
-const MAX_SOURCE_FILES = 500;
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_SOURCE_FILES = 2500;
+const MAX_TOTAL_SOURCE_BYTES = 25 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 const fileCache = new Map<string, string>();
 
 interface ProcessDefinition {
@@ -432,7 +434,8 @@ function computeReportStats(graphData: GraphData): ReportStats {
 }
 
 app.use(cors({ origin: "http://localhost:5173" }));
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
@@ -701,7 +704,7 @@ Be specific, technical, and useful. Write like a senior engineer.`;
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_BYTES },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype === "application/zip" || file.originalname.endsWith(".zip")) {
       cb(null, true);
@@ -710,6 +713,20 @@ const upload = multer({
     }
   },
 });
+
+function isSupportedSourceFile(entryPath: string): boolean {
+  if (/(node_modules|\.git|dist|build|\.next|coverage|vendor|target|__pycache__)\//.test(entryPath)) {
+    return false;
+  }
+
+  if (
+    /(^|\/)(package-lock\.json|package\.json|pnpm-lock\.yaml|yarn\.lock|poetry\.lock|Cargo\.lock)$/i.test(entryPath)
+  ) {
+    return false;
+  }
+
+  return /\.(js|jsx|ts|tsx|py|json|ya?ml|md)$/i.test(entryPath);
+}
 
 app.post("/api/upload", upload.single("file"), (req, res) => {
   if (!req.file) {
@@ -724,6 +741,8 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
     const sourceFiles: { path: string; content: string }[] = [];
     let skippedOversized = 0;
     let skippedUnreadable = 0;
+    let skippedByBudget = 0;
+    let totalSourceBytes = 0;
 
     for (const entry of entries) {
       if (sourceFiles.length >= MAX_SOURCE_FILES) break;
@@ -731,31 +750,31 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
 
       const entryPath = entry.entryName;
 
-      if (/(node_modules|\.git|dist|build|\.next|coverage)\//.test(entryPath)) continue;
-      if (
-        !/\.(js|jsx|ts|tsx|py|json|ya?ml|md)$/i.test(entryPath) ||
-        /(^|\/)(package-lock\.json|package\.json)$/i.test(entryPath)
-      ) {
-        continue;
-      }
+      if (!isSupportedSourceFile(entryPath)) continue;
 
       if (entry.header.size > MAX_FILE_BYTES) {
         skippedOversized++;
         continue;
       }
 
+      if (totalSourceBytes + entry.header.size > MAX_TOTAL_SOURCE_BYTES) {
+        skippedByBudget++;
+        continue;
+      }
+
       try {
         const content = entry.getData().toString("utf-8");
         sourceFiles.push({ path: entryPath, content });
+        totalSourceBytes += entry.header.size;
       } catch {
         skippedUnreadable++;
       }
     }
 
-    if (skippedOversized > 0 || skippedUnreadable > 0) {
+    if (skippedOversized > 0 || skippedUnreadable > 0 || skippedByBudget > 0) {
       console.warn(
         `[VECTRON] ZIP sampled: skipped ${skippedOversized} oversized file(s) ` +
-          `(>${MAX_FILE_BYTES / 1024}KB) and ${skippedUnreadable} unreadable file(s). ` +
+          `(>${MAX_FILE_BYTES / 1024}KB), ${skippedUnreadable} unreadable file(s), and ${skippedByBudget} file(s) due to the parser budget. ` +
           `Processing ${sourceFiles.length} of eligible source files.`,
       );
     } else {
@@ -782,6 +801,24 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
     console.error("[VECTRON] Upload error:", message);
     res.status(500).json({ error: `Processing failed: ${message}` });
   }
+});
+
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({
+        error: `ZIP file is too large. Upload a file smaller than ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))}MB.`,
+      });
+      return;
+    }
+
+    res.status(400).json({ error: `Upload failed: ${err.message}` });
+    return;
+  }
+
+  const message = err instanceof Error ? err.message : "Unknown upload error";
+  console.error("[VECTRON] Unhandled server error:", message);
+  res.status(500).json({ error: `Processing failed: ${message}` });
 });
 
 app.get("/api/file", (req, res) => {

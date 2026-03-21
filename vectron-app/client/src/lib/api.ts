@@ -22,8 +22,25 @@ async function buildApiError(res: Response): Promise<Error> {
     } else {
         const text = await res.text().catch(() => '');
         if (text.trim()) {
-            message = text.trim();
+            message = text
+                .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+                .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
         }
+    }
+
+    if (!message || /^error$/i.test(message)) {
+        message = `Server error ${res.status}`;
+    }
+
+    if (res.status === 413) {
+        return new Error(message || 'Repository archive is too large for the current VECTRON upload limit.');
+    }
+
+    if (res.status >= 500 && /internal server error/i.test(message)) {
+        return new Error('VECTRON could not process this repository. Try a smaller ZIP or a repo root without build artifacts.');
     }
 
     if (
