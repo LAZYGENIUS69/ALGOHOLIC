@@ -8,12 +8,15 @@ interface FilterPanelProps {
     hideHeader?: boolean;
 }
 
-const NODE_TYPES = [
-    { id: 'file', label: 'File', color: '#FF2D55' },
-    { id: 'function', label: 'Function', color: '#00C7BE' },
-    { id: 'class', label: 'Class', color: '#FF9F0A' },
-    { id: 'method', label: 'Method', color: '#30D158' },
-    { id: 'import', label: 'Import', color: '#636366' },
+const NODE_TYPES: Array<{ ids: string[]; label: string; color: string }> = [
+    { ids: ['file'], label: 'File', color: '#FF2D55' },
+    { ids: ['function'], label: 'Function', color: '#00C7BE' },
+    { ids: ['class'], label: 'Class', color: '#FF9F0A' },
+    { ids: ['method'], label: 'Method', color: '#30D158' },
+    { ids: ['import'], label: 'Import', color: '#636366' },
+    { ids: ['python_function', 'python_class'], label: 'Python', color: '#3572A5' },
+    { ids: ['config'], label: 'Config', color: '#FF9F0A' },
+    { ids: ['doc'], label: 'Docs', color: '#888888' },
 ];
 
 const EDGE_TYPES = [
@@ -22,6 +25,7 @@ const EDGE_TYPES = [
     { id: 'CALLS', label: 'CALLS' },
     { id: 'EXTENDS', label: 'EXTENDS' },
     { id: 'CONTAINS', label: 'CONTAINS' },
+    { id: 'DOCUMENTS', label: 'DOCUMENTS' },
 ];
 
 const TerminalSwitch = ({ active, onClick }: { active: boolean, onClick: () => void }) => (
@@ -36,8 +40,15 @@ const TerminalSwitch = ({ active, onClick }: { active: boolean, onClick: () => v
 export default function FilterPanel({ nodeFilters, setNodeFilters, edgeFilters, setEdgeFilters, hideHeader = false }: FilterPanelProps) {
     const [isCollapsed, setIsCollapsed] = React.useState(false);
 
-    const toggleNode = (id: string) => {
-        setNodeFilters(prev => ({ ...prev, [id]: !prev[id] }));
+    const toggleNode = (ids: string[]) => {
+        setNodeFilters(prev => {
+            const nextValue = !ids.every((id) => !!prev[id]);
+            const updates = ids.reduce<Record<string, boolean>>((acc, id) => {
+                acc[id] = nextValue;
+                return acc;
+            }, {});
+            return { ...prev, ...updates };
+        });
     };
 
     const toggleEdge = (id: string) => {
@@ -65,14 +76,14 @@ export default function FilterPanel({ nodeFilters, setNodeFilters, edgeFilters, 
                         </div>
                         <div>
                             {NODE_TYPES.map(type => (
-                                <div key={type.id} className="filter-row">
+                                <div key={type.label} className="filter-row">
                                     <div className="filter-label-wrap">
                                         <div className="filter-color-dot" style={{ background: type.color }} />
                                         <span className="filter-label">{type.label}</span>
                                     </div>
                                     <TerminalSwitch
-                                        active={!!nodeFilters[type.id]}
-                                        onClick={() => toggleNode(type.id)}
+                                        active={type.ids.every((id) => !!nodeFilters[id])}
+                                        onClick={() => toggleNode(type.ids)}
                                     />
                                 </div>
                             ))}

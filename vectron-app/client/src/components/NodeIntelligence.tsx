@@ -15,6 +15,10 @@ const NODE_TYPE_COLORS: Record<GraphNode['type'], string> = {
     class: '#FF9F0A',
     method: '#30D158',
     import: '#636366',
+    python_function: '#3572A5',
+    python_class: '#FFD43B',
+    config: '#FF9F0A',
+    doc: '#888888',
 };
 
 const DEPENDENCY_EDGE_KINDS = new Set(['CALLS', 'IMPORTS', 'EXTENDS']);

@@ -34,6 +34,10 @@ const KIND_HUES: Record<string, string> = {
   function: '#00C7BE',   // caribbean teal
   class:    '#FF9F0A',   // signal amber
   method:   '#30D158',   // spring green
+  python_function: '#3572A5',
+  python_class: '#FFD43B',
+  config: '#FF9F0A',
+  doc: '#888888',
   import:   '#636366',   // neutral gray
   _fallback:'#BF5AF2',   // electric violet
 };
@@ -50,6 +54,7 @@ const CLUSTER_HUES = [
 const LINK_VISUALS: Record<string, { hue: string; opacity: string; width: number }> = {
   CONTAINS: { hue: '#22c55e', opacity: '33', width: 0.3 },
   DEFINES:  { hue: '#06b6d4', opacity: '33', width: 0.3 },
+  DOCUMENTS:{ hue: '#94a3b8', opacity: '55', width: 0.4 },
   IMPORTS:  { hue: '#3b82f6', opacity: '44', width: 0.5 },
   CALLS:    { hue: '#8b5cf6', opacity: '33', width: 0.5 },
   EXTENDS:  { hue: '#f97316', opacity: '44', width: 0.7 },
@@ -62,12 +67,16 @@ const NODE_LEGEND = [
   { hue: '#00C7BE', tag: 'Function' },
   { hue: '#FF9F0A', tag: 'Class' },
   { hue: '#30D158', tag: 'Method' },
+  { hue: '#3572A5', tag: 'Python' },
+  { hue: '#FF9F0A', tag: 'Config' },
+  { hue: '#888888', tag: 'Docs' },
 ];
 const EDGE_LEGEND = [
   { hue: '#06b6d4', tag: 'DEFINES' },
   { hue: '#3b82f6', tag: 'IMPORTS' },
   { hue: '#8b5cf6', tag: 'CALLS' },
   { hue: '#f97316', tag: 'EXTENDS' },
+  { hue: '#94a3b8', tag: 'DOCUMENTS' },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -134,7 +143,7 @@ function tint(a: string, b: string, t: number): string {
  */
 function computeNodeRadius(kind: string, degree: number, totalNodes: number): number {
   const BASE: Record<string, number> = {
-    file: 7, function: 3, class: 9, method: 2.5, import: 1.5, _fallback: 4,
+    file: 7, function: 3, class: 9, method: 2.5, python_function: 3.5, python_class: 8.5, config: 3, doc: 4, import: 1.5, _fallback: 4,
   };
   const b     = BASE[kind] ?? BASE._fallback;
   const bonus = Math.log1p(degree) * 0.9;
@@ -149,7 +158,7 @@ function computeNodeRadius(kind: string, degree: number, totalNodes: number): nu
 function computeNodeMass(kind: string, totalNodes: number): number {
   const scale = totalNodes > 5000 ? 2 : totalNodes > 1000 ? 1.5 : 1;
   const base: Record<string, number> = {
-    class: 5, file: 3, function: 2, method: 1.5, import: 1, _fallback: 2,
+    class: 5, file: 3, function: 2, method: 1.5, python_function: 2, python_class: 4, config: 1.8, doc: 1.8, import: 1, _fallback: 2,
   };
   return (base[kind] ?? base._fallback) * (kind === 'import' ? 1 : scale);
 }

@@ -277,6 +277,7 @@ function buildCompactGraphSummary(graphData: GraphData): string {
     ? graphData.nodes.filter(
         (node) =>
           node.type === "file" ||
+          node.type === "doc" ||
           node.type === "class" ||
           (nodeDegree.get(node.id) || 0) > 2,
       )
@@ -356,9 +357,13 @@ function sanitizeProcesses(
 }
 
 function computeReportStats(graphData: GraphData): ReportStats {
-  const fileNodes = graphData.nodes.filter((node) => node.type === "file");
+  const fileNodes = graphData.nodes.filter((node) => node.type === "file" || node.type === "doc");
   const functionNodes = graphData.nodes.filter(
-    (node) => node.type === "function" || node.type === "method",
+    (node) =>
+      node.type === "function" ||
+      node.type === "method" ||
+      node.type === "python_function" ||
+      node.type === "python_class",
   );
 
   const degreeMap = new Map<string, number>();
@@ -727,7 +732,12 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
       const entryPath = entry.entryName;
 
       if (/(node_modules|\.git|dist|build|\.next|coverage)\//.test(entryPath)) continue;
-      if (!/\.(js|jsx|ts|tsx)$/.test(entryPath)) continue;
+      if (
+        !/\.(js|jsx|ts|tsx|py|json|ya?ml|md)$/i.test(entryPath) ||
+        /(^|\/)(package-lock\.json|package\.json)$/i.test(entryPath)
+      ) {
+        continue;
+      }
 
       if (entry.header.size > MAX_FILE_BYTES) {
         skippedOversized++;
@@ -758,7 +768,9 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
     }
 
     if (sourceFiles.length === 0) {
-      res.status(422).json({ error: "No parseable JS/TS files found in the zip" });
+      res.status(422).json({
+        error: "No supported JS, TS, Python, JSON, YAML, or Markdown files found in the zip",
+      });
       return;
     }
 

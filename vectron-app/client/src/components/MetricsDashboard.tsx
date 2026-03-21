@@ -20,9 +20,13 @@ const TYPE_COLORS: Record<string, string> = {
     function: '#00C7BE',
     class: '#FF9F0A',
     method: '#30D158',
+    python_function: '#3572A5',
+    python_class: '#FFD43B',
+    config: '#FF9F0A',
+    doc: '#888888',
 };
 
-const TYPE_LABELS: Array<GraphNode['type']> = ['file', 'function', 'class', 'method'];
+const TYPE_LABELS: Array<GraphNode['type']> = ['file', 'function', 'class', 'method', 'python_function', 'python_class', 'config', 'doc'];
 
 function truncateLabel(label: string, maxLength: number) {
     return label.length > maxLength ? `${label.slice(0, maxLength - 1)}...` : label;
@@ -88,7 +92,7 @@ export default function MetricsDashboard({ graph }: MetricsDashboardProps) {
         const totalConnections = riskRows.reduce((sum, row) => sum + row.connections, 0);
         const typeDistribution = TYPE_LABELS.map((type) => ({
             type,
-            label: type[0].toUpperCase() + type.slice(1),
+            label: type.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()),
             value: graph.nodes.filter((node) => node.type === type).length,
             color: TYPE_COLORS[type],
         }));

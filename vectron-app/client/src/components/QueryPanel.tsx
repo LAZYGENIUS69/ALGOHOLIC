@@ -166,6 +166,10 @@ export default function QueryPanel({
         class: true,
         method: true,
         import: true,
+        python_function: true,
+        python_class: true,
+        config: true,
+        doc: true,
     }), []);
     const allEdgeFilters = useMemo(() => ({
         DEFINES: true,
@@ -173,6 +177,7 @@ export default function QueryPanel({
         CALLS: true,
         EXTENDS: true,
         CONTAINS: true,
+        DOCUMENTS: true,
     }), []);
     const highlightedSet = useMemo(() => new Set(highlightedNodeIds), [highlightedNodeIds]);
     const selectedNode = useMemo(

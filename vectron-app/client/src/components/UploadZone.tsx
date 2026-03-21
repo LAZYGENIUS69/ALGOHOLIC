@@ -67,7 +67,7 @@ export default function UploadZone({ onGraph }: UploadZoneProps) {
                         ? 'Building knowledge graph from AST'
                         : 'Drag & drop a .zip file or click to browse'}
                 </div>
-                <div className="upload-hint">Supports JS · TS · JSX · TSX</div>
+                <div className="upload-hint">Supports JS · TS · JSX · TSX · PY · JSON · YAML · MD</div>
 
                 {error && <div className="upload-error">{error}</div>}
             </div>

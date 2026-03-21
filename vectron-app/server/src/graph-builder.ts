@@ -1,225 +1,276 @@
-import path from 'path';
-import { parseFile } from './parser';
+import path from "path";
+import { parseFile } from "./parser";
 
-// ── Public types ─────────────────────────────────────────────────────────────
-export type NodeKind = 'file' | 'function';
-export type EdgeKind = 'IMPORTS' | 'CALLS' | 'CONTAINS' | 'DEFINES' | 'EXTENDS';
+export type NodeKind = "file" | "function";
+export type EdgeKind =
+  | "IMPORTS"
+  | "CALLS"
+  | "CONTAINS"
+  | "DEFINES"
+  | "EXTENDS"
+  | "DOCUMENTS";
+
+export type GraphNodeType =
+  | "file"
+  | "function"
+  | "class"
+  | "method"
+  | "import"
+  | "python_function"
+  | "python_class"
+  | "config"
+  | "doc";
 
 export interface GraphNode {
-    id: string;
-    label: string;
-    type: 'file' | 'function' | 'class' | 'method' | 'import';
-    fileId: string;
-    filePath: string;
-    startLine?: number;
-    endLine?: number;
-    centrality: number;   // degree centrality 0–1
-    module: string;       // top-level folder/group name
+  id: string;
+  label: string;
+  type: GraphNodeType;
+  fileId: string;
+  filePath: string;
+  startLine?: number;
+  endLine?: number;
+  centrality: number;
+  module: string;
 }
 
 export interface GraphEdge {
-    id: string;
-    source: string;
-    target: string;
-    kind: EdgeKind;
+  id: string;
+  source: string;
+  target: string;
+  kind: EdgeKind;
 }
 
 export interface GraphData {
-    nodes: GraphNode[];
-    edges: GraphEdge[];
-    crossModuleEdges: number;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  crossModuleEdges: number;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
 let _seq = 0;
 function uid(prefix: string): string {
-    return `${prefix}_${++_seq}`;
+  return `${prefix}_${++_seq}`;
 }
 
-/**
- * Extract top-level module name from a file path.
- * e.g. "src/components/Foo.tsx" → "components"
- *      "index.ts"               → "root"
- */
 function extractModule(filePath: string): string {
-    const parts = filePath.replace(/\\/g, '/').split('/');
-    // Return the very first directory segment — this is the top-level module
-    // e.g. 'my-lib/src/hooks/useAuth.ts' → 'my-lib'
-    // e.g. 'src/components/Foo.tsx' → 'src'
-    // e.g. 'index.ts' → 'root'
-    if (parts.length > 1) return parts[0];
-    return 'root';
+  const parts = filePath.replace(/\\/g, "/").split("/");
+  if (parts.length > 1) return parts[0];
+  return "root";
 }
 
-/**
- * Resolve an import specifier (relative or bare) against the importing file,
- * and return the canonical file path as it would appear in our node map.
- */
+function resolveRelativePythonImport(importerPath: string, specifier: string): string {
+  const normalized = specifier.replace(/\.+/g, (dots) => `__DOTS__${dots.length}__`);
+  if (!normalized.startsWith("__DOTS__")) return specifier.replace(/\./g, "/");
+
+  const parts = normalized.split("/");
+  const first = parts[0];
+  const dotCount = Number(first.replace(/[^0-9]/g, "")) || 1;
+  const remainder = specifier.slice(dotCount).replace(/\./g, "/");
+  const baseParts = path.dirname(importerPath).replace(/\\/g, "/").split("/");
+  const keepLength = Math.max(0, baseParts.length - (dotCount - 1));
+  const rootPath = baseParts.slice(0, keepLength).join("/");
+  return [rootPath, remainder].filter(Boolean).join("/");
+}
+
 function resolveImport(importerPath: string, specifier: string, knownPaths: Set<string>): string | null {
-    // Bare module import — skip (we only track project-internal deps)
-    if (!specifier.startsWith('.')) return null;
+  const extensionCandidates = [
+    "",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".py",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".md",
+    "/index.ts",
+    "/index.tsx",
+    "/index.js",
+    "/index.jsx",
+    "/__init__.py",
+  ];
 
+  let bases: string[] = [];
+
+  if (specifier.startsWith("./") || specifier.startsWith("../")) {
     const base = path.dirname(importerPath);
-    const resolved = path.join(base, specifier).replace(/\\/g, '/');
-
-    // Try with common extensions
-    const candidates = [
-        resolved,
-        `${resolved}.ts`,
-        `${resolved}.tsx`,
-        `${resolved}.js`,
-        `${resolved}.jsx`,
-        `${resolved}/index.ts`,
-        `${resolved}/index.tsx`,
-        `${resolved}/index.js`,
-    ];
-
-    for (const c of candidates) {
-        if (knownPaths.has(c)) return c;
-    }
-
+    bases = [path.join(base, specifier).replace(/\\/g, "/")];
+  } else if (/^\.+[A-Za-z0-9_.-]*$/.test(specifier)) {
+    bases = [resolveRelativePythonImport(importerPath, specifier)];
+  } else if (specifier.includes(".")) {
+    bases = [specifier.replace(/\./g, "/")];
+  } else {
     return null;
+  }
+
+  for (const baseCandidate of bases) {
+    for (const extension of extensionCandidates) {
+      const candidate = `${baseCandidate}${extension}`.replace(/\\/g, "/");
+      if (knownPaths.has(candidate)) return candidate;
+    }
+  }
+
+  return null;
 }
 
-// ── Main builder ─────────────────────────────────────────────────────────────
+const CALLABLE_NODE_TYPES = new Set<GraphNodeType>([
+  "function",
+  "method",
+  "python_function",
+  "python_class",
+]);
+
+const NON_FILE_NODE_TYPES = new Set<GraphNodeType>([
+  "function",
+  "class",
+  "method",
+  "import",
+  "python_function",
+  "python_class",
+  "config",
+  "doc",
+]);
+
 export function buildGraph(files: { path: string; content: string }[]): GraphData {
-    _seq = 0;
-    const nodes: GraphNode[] = [];
-    const edges: GraphEdge[] = [];
+  _seq = 0;
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+  const fileNodeMap = new Map<string, string>();
+  const knownPaths = new Set(files.map((file) => file.path));
+  const parsedFiles = new Map<string, ReturnType<typeof parseFile>>();
 
-    // ── Pass 1: create file nodes + parse ────────────────────────────────────
-    const fileNodeMap = new Map<string, string>(); // filePath → nodeId
-    const knownPaths = new Set(files.map(f => f.path));
+  files.forEach((file) => {
+    parsedFiles.set(file.path, parseFile(file.path, file.content));
+  });
 
-    for (const file of files) {
-        const nodeId = uid('file');
-        const mod = extractModule(file.path);
-        fileNodeMap.set(file.path, nodeId);
-        nodes.push({
-            id: nodeId,
-            label: path.basename(file.path),
-            type: 'file',
-            fileId: file.path,
-            filePath: file.path,
-            centrality: 0, // computed in pass 4
-            module: mod,
+  for (const file of files) {
+    const nodeId = uid("file");
+    const mod = extractModule(file.path);
+    const parsed = parsedFiles.get(file.path);
+
+    fileNodeMap.set(file.path, nodeId);
+    nodes.push({
+      id: nodeId,
+      label: path.basename(file.path),
+      type: parsed?.fileNodeType === "doc" ? "doc" : "file",
+      fileId: file.path,
+      filePath: file.path,
+      centrality: 0,
+      module: mod,
+    });
+  }
+
+  const callableNameToIds = new Map<string, string[]>();
+  const fileMetadata = new Map<string, { callees: string[]; fileNodeId: string }>();
+
+  for (const file of files) {
+    const parsed = parsedFiles.get(file.path);
+    if (!parsed) continue;
+
+    const fileNodeId = fileNodeMap.get(file.path)!;
+    const fileNode = nodes.find((node) => node.id === fileNodeId);
+    const mod = fileNode?.module ?? "root";
+
+    for (const parsedNode of parsed.nodes) {
+      const nodeId = uid("node");
+      nodes.push({
+        id: nodeId,
+        label: parsedNode.name,
+        type: parsedNode.type,
+        fileId: file.path,
+        filePath: file.path,
+        startLine: parsedNode.startLine,
+        endLine: parsedNode.endLine,
+        centrality: 0,
+        module: mod,
+      });
+
+      if (CALLABLE_NODE_TYPES.has(parsedNode.type)) {
+        if (!callableNameToIds.has(parsedNode.name)) {
+          callableNameToIds.set(parsedNode.name, []);
+        }
+        callableNameToIds.get(parsedNode.name)!.push(nodeId);
+      }
+
+      if (parsedNode.type !== "import") {
+        edges.push({
+          id: uid("e"),
+          source: fileNodeId,
+          target: nodeId,
+          kind: parsedNode.edgeKind,
         });
+      }
     }
 
-    // ── Pass 2: parse + create function nodes + edges ─────────────────────────
-    // Map: function name → array of node IDs (same name can exist in multiple files)
-    const fnNameToIds = new Map<string, string[]>();
+    parsed.imports.forEach((specifier) => {
+      const targetPath = resolveImport(file.path, specifier, knownPaths);
+      if (!targetPath) return;
 
-    for (const file of files) {
-        const parsed = parseFile(file.path, file.content);
-        if (!parsed) continue;
+      const targetId = fileNodeMap.get(targetPath);
+      if (!targetId || targetId === fileNodeId) return;
 
-        const fileNodeId = fileNodeMap.get(file.path)!;
-        const mod = (nodes.find(n => n.id === fileNodeId)?.module) ?? 'root';
+      edges.push({
+        id: uid("e"),
+        source: fileNodeId,
+        target: targetId,
+        kind: "IMPORTS",
+      });
+    });
 
-        // Nodes
-        for (const n of parsed.nodes) {
-            const nId = uid('node');
-            nodes.push({
-                id: nId,
-                label: n.name,
-                type: n.type,
-                fileId: file.path,
-                filePath: file.path,
-                startLine: n.startLine,
-                endLine: n.endLine,
-                centrality: 0,
-                module: mod,
-            });
+    fileMetadata.set(file.path, {
+      callees: parsed.callees,
+      fileNodeId,
+    });
+  }
 
-            if (!fnNameToIds.has(n.name)) fnNameToIds.set(n.name, []);
-            fnNameToIds.get(n.name)!.push(nId);
+  for (const file of files) {
+    const metadata = fileMetadata.get(file.path);
+    if (!metadata) continue;
 
-            // DEFINES edge: file → function/class/method
-            // This creates the branching tree structure that makes
-            // This creates the branching tree structure (tight clusters around files)
-            if (n.type !== 'import') {
-                edges.push({
-                    id: uid('e'),
-                    source: fileNodeId,
-                    target: nId,
-                    kind: 'DEFINES',
-                });
-            }
-        }
+    const sourceNodeIds = nodes
+      .filter((node) => NON_FILE_NODE_TYPES.has(node.type) && node.type !== "import" && node.filePath === file.path)
+      .map((node) => node.id);
 
-        // IMPORTS edges (file → file)
-        for (const specifier of parsed.imports) {
-            const targetPath = resolveImport(file.path, specifier, knownPaths);
-            if (!targetPath) continue;
-            const targetId = fileNodeMap.get(targetPath);
-            if (!targetId || targetId === fileNodeId) continue;
+    metadata.callees.forEach((callee) => {
+      const targetIds = callableNameToIds.get(callee);
+      if (!targetIds) return;
 
-            edges.push({
-                id: uid('e'),
-                source: fileNodeId,
-                target: targetId,
-                kind: 'IMPORTS',
-            });
-        }
+      sourceNodeIds.forEach((sourceId) => {
+        targetIds.forEach((targetId) => {
+          if (sourceId === targetId) return;
+          edges.push({
+            id: uid("e"),
+            source: sourceId,
+            target: targetId,
+            kind: "CALLS",
+          });
+        });
+      });
+    });
+  }
 
-        // Stash callees for pass 3
-        (file as { path: string; content: string } & { _callees?: string[]; _fileNodeId?: string })._callees = parsed.callees;
-        (file as { path: string; content: string } & { _callees?: string[]; _fileNodeId?: string })._fileNodeId = fileNodeId;
+  const outDegree = new Map<string, number>();
+  nodes.forEach((node) => outDegree.set(node.id, 0));
+  edges.forEach((edge) => {
+    outDegree.set(edge.source, (outDegree.get(edge.source) ?? 0) + 1);
+  });
+
+  const maxDegree = Math.max(1, ...outDegree.values());
+  nodes.forEach((node) => {
+    node.centrality = (outDegree.get(node.id) ?? 0) / maxDegree;
+  });
+
+  const nodeModuleMap = new Map<string, string>();
+  nodes.forEach((node) => nodeModuleMap.set(node.id, node.module));
+
+  let crossModuleEdges = 0;
+  edges.forEach((edge) => {
+    const srcMod = nodeModuleMap.get(edge.source);
+    const tgtMod = nodeModuleMap.get(edge.target);
+    if (srcMod && tgtMod && srcMod !== tgtMod) {
+      crossModuleEdges++;
     }
+  });
 
-    // ── Pass 3: CALLS edges (function → function by name) ────────────────────
-    for (const file of files) {
-        const f = file as { path: string; content: string } & { _callees?: string[]; _fileNodeId?: string };
-        if (!f._callees || !f._fileNodeId) continue;
-
-        const sourceFnIds = nodes
-            .filter(n => n.type !== 'file' && n.type !== 'import' && n.filePath === file.path)
-            .map(n => n.id);
-
-        for (const callee of f._callees) {
-            const targetIds = fnNameToIds.get(callee);
-            if (!targetIds) continue;
-
-            for (const sourceId of sourceFnIds) {
-                for (const targetId of targetIds) {
-                    if (sourceId === targetId) continue;
-                    edges.push({
-                        id: uid('e'),
-                        source: sourceId,
-                        target: targetId,
-                        kind: 'CALLS',
-                    });
-                }
-            }
-        }
-    }
-
-    // ── Pass 4: compute degree centrality ────────────────────────────────────
-    const N = nodes.length;
-    const outDegree = new Map<string, number>();
-    for (const node of nodes) outDegree.set(node.id, 0);
-    for (const edge of edges) {
-        outDegree.set(edge.source, (outDegree.get(edge.source) ?? 0) + 1);
-    }
-
-    const maxDegree = Math.max(1, ...outDegree.values());
-    for (const node of nodes) {
-        node.centrality = N > 1
-            ? (outDegree.get(node.id) ?? 0) / maxDegree
-            : 0;
-    }
-
-    // ── Pass 5: count cross-module edges ─────────────────────────────────────
-    const nodeModuleMap = new Map<string, string>();
-    for (const node of nodes) nodeModuleMap.set(node.id, node.module);
-
-    let crossModuleEdges = 0;
-    for (const edge of edges) {
-        const srcMod = nodeModuleMap.get(edge.source);
-        const tgtMod = nodeModuleMap.get(edge.target);
-        if (srcMod && tgtMod && srcMod !== tgtMod) crossModuleEdges++;
-    }
-
-    return { nodes, edges, crossModuleEdges };
+  return { nodes, edges, crossModuleEdges };
 }

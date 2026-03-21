@@ -240,7 +240,7 @@ function FileNode({
 export default function ExplorerPanel({ nodes, focusedFileId, onFileClick }: ExplorerPanelProps) {
     const [query, setQuery] = useState('');
 
-    const fileNodes = useMemo(() => nodes.filter((node) => node.type === 'file'), [nodes]);
+    const fileNodes = useMemo(() => nodes.filter((node) => node.type === 'file' || node.type === 'doc'), [nodes]);
     const tree = useMemo(() => buildTree(fileNodes), [fileNodes]);
     const normalizedQuery = query.trim().toLowerCase();
     const filteredTree = useMemo(() => filterTree(tree, normalizedQuery), [tree, normalizedQuery]);

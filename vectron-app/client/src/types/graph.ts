@@ -1,12 +1,12 @@
 // Shared types used by both client components and (mirrored from) server.
 
 export type NodeKind = 'file' | 'function';
-export type EdgeKind = 'IMPORTS' | 'CALLS' | 'CONTAINS' | 'DEFINES' | 'EXTENDS';
+export type EdgeKind = 'IMPORTS' | 'CALLS' | 'CONTAINS' | 'DEFINES' | 'EXTENDS' | 'DOCUMENTS';
 
 export interface GraphNode {
     id: string;
     label: string;
-    type: 'file' | 'function' | 'class' | 'method' | 'import';
+    type: 'file' | 'function' | 'class' | 'method' | 'import' | 'python_function' | 'python_class' | 'config' | 'doc';
     fileId: string;
     filePath: string;
     startLine?: number;

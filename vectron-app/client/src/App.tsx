@@ -40,14 +40,19 @@ export default function App() {
         function: true,
         class: true,
         method: true,
-        import: false
+        import: false,
+        python_function: true,
+        python_class: true,
+        config: true,
+        doc: true,
     });
     const [edgeFilters, setEdgeFilters] = useState<Record<string, boolean>>({
         DEFINES: true,
         IMPORTS: true,
         CALLS: true,
         EXTENDS: true,
-        CONTAINS: false
+        CONTAINS: false,
+        DOCUMENTS: true,
     });
 
     useEffect(() => {
@@ -114,7 +119,7 @@ export default function App() {
 
     const handleFileClick = useCallback((fileId: string) => {
         setFocusedFileId(fileId);
-        const fileNode = graph?.nodes.find((node) => node.type === 'file' && node.fileId === fileId);
+        const fileNode = graph?.nodes.find((node) => (node.type === 'file' || node.type === 'doc') && node.fileId === fileId);
         if (fileNode) {
             setSelectedId(fileNode.id);
             setSelectedNodeForProcess(fileNode.label);
