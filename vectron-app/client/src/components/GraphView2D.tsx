@@ -200,6 +200,8 @@ export default function GraphView2D({
   const graphRef     = useRef<Graph | null>(null);
   const layoutRef    = useRef<FA2Layout | null>(null);
   const timerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const layoutStartedAtRef = useRef<number | null>(null);
+  const remainingDurationRef = useRef(0);
 
   // Prop mirrors for closure-safe reducer access
   const vModeRef  = useRef(vectronMode);
@@ -227,16 +229,22 @@ export default function GraphView2D({
   useEffect(() => { queryRef.current = queryIds;     }, [queryIds]);
 
   const [computing, setComputing] = useState(false);
+  const [layoutPaused, setLayoutPaused] = useState(false);
 
   /* ─── lifecycle ────────────────────────────────────────────────── */
 
   const cleanup = useCallback(() => {
     timerRef.current && clearTimeout(timerRef.current);
+    timerRef.current = null;
     layoutRef.current?.kill();
     layoutRef.current = null;
+    layoutStartedAtRef.current = null;
+    remainingDurationRef.current = 0;
     sigmaRef.current?.kill();
     sigmaRef.current = null;
     graphRef.current = null;
+    setComputing(false);
+    setLayoutPaused(false);
   }, []);
 
   // Handle data changes and initialization
@@ -280,7 +288,56 @@ export default function GraphView2D({
   /* ─── camera controls ──────────────────────────────────────────── */
   const zoomIn  = useCallback(() => sigmaRef.current?.getCamera().animatedZoom({ duration: 180 }), []);
   const zoomOut = useCallback(() => sigmaRef.current?.getCamera().animatedUnzoom({ duration: 180 }), []);
-  const fitAll  = useCallback(() => sigmaRef.current?.getCamera().animatedReset({ duration: 400 }), []);
+  const finalizeLayout = useCallback(() => {
+    const layout = layoutRef.current;
+    const graph = graphRef.current;
+    const sigma = sigmaRef.current;
+    if (!layout || !graph || !sigma) return;
+
+    timerRef.current && clearTimeout(timerRef.current);
+    timerRef.current = null;
+    layout.stop();
+    layoutRef.current = null;
+    layoutStartedAtRef.current = null;
+    remainingDurationRef.current = 0;
+
+    noverlap.assign(graph, { maxIterations: 20, settings: { ratio: 1.1, margin: 10 } });
+    sigma.refresh();
+    setComputing(false);
+    setLayoutPaused(false);
+  }, []);
+
+  const toggleLayoutPause = useCallback(() => {
+    const layout = layoutRef.current;
+    if (!layout) return;
+
+    if (computing) {
+      timerRef.current && clearTimeout(timerRef.current);
+      timerRef.current = null;
+
+      if (layoutStartedAtRef.current) {
+        const elapsed = Date.now() - layoutStartedAtRef.current;
+        remainingDurationRef.current = Math.max(0, remainingDurationRef.current - elapsed);
+      }
+
+      layout.stop();
+      layoutStartedAtRef.current = null;
+      setComputing(false);
+      setLayoutPaused(true);
+      sigmaRef.current?.refresh();
+      return;
+    }
+
+    if (!layoutPaused) return;
+
+    layout.start();
+    layoutStartedAtRef.current = Date.now();
+    setComputing(true);
+    setLayoutPaused(false);
+    timerRef.current = setTimeout(() => {
+      finalizeLayout();
+    }, Math.max(remainingDurationRef.current, 0));
+  }, [computing, finalizeLayout, layoutPaused]);
 
   /* ═════════════════════════════════════════════════════════════════
      BOOTSTRAP — builds the graph, launches layout
@@ -586,15 +643,13 @@ export default function GraphView2D({
     const layout = new FA2Layout(graph, { settings });
     layoutRef.current = layout;
     layout.start();
+    remainingDurationRef.current = duration;
+    layoutStartedAtRef.current = Date.now();
     setComputing(true);
+    setLayoutPaused(false);
 
     timerRef.current = setTimeout(() => {
-      layout.stop();
-      layoutRef.current = null;
-      noverlap.assign(graph, { maxIterations: 20, settings: { ratio: 1.1, margin: 10 } });
-      sigma.getCamera().animatedReset({ duration: 700 });
-      sigma.refresh();
-      setComputing(false);
+      finalizeLayout();
     }, duration);
   }
 
@@ -609,9 +664,38 @@ export default function GraphView2D({
       {computing && (
         <div style={{ position: 'absolute', bottom: 42, left: '50%', transform: 'translateX(-50%)', color: 'rgba(0,217,255,0.35)', fontSize: 10, fontFamily: '"Courier New", monospace', pointerEvents: 'none', zIndex: 10, letterSpacing: 2 }}>COMPUTING LAYOUT...</div>
       )}
+      {layoutPaused && (
+        <div style={{ position: 'absolute', bottom: 42, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,204,0,0.55)', fontSize: 10, fontFamily: '"Courier New", monospace', pointerEvents: 'none', zIndex: 10, letterSpacing: 2 }}>LAYOUT PAUSED</div>
+      )}
       <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10 }}>
-        {([{ ch: '+', fn: zoomIn, title: 'Zoom In' }, { ch: '−', fn: zoomOut, title: 'Zoom Out' }, { ch: '⊡', fn: fitAll, title: 'Fit All' }] as const).map(b => (
-          <button key={b.ch} onClick={b.fn} title={b.title} style={{ width: 30, height: 30, background: 'transparent', border: '1px solid rgba(0,217,255,0.22)', color: '#00D9FF', borderRadius: 2, cursor: 'pointer', fontSize: 15, fontFamily: 'monospace', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{b.ch}</button>
+        {([
+          { ch: '+', fn: zoomIn, title: 'Zoom In', disabled: false },
+          { ch: '−', fn: zoomOut, title: 'Zoom Out', disabled: false },
+          { ch: layoutPaused ? '▶' : '⏸', fn: toggleLayoutPause, title: layoutPaused ? 'Resume Layout' : 'Pause Layout', disabled: !computing && !layoutPaused },
+        ] as const).map(b => (
+          <button
+            key={b.title}
+            onClick={b.fn}
+            title={b.title}
+            disabled={b.disabled}
+            style={{
+              width: 30,
+              height: 30,
+              background: 'transparent',
+              border: '1px solid rgba(0,217,255,0.22)',
+              color: b.disabled ? 'rgba(0,217,255,0.35)' : '#00D9FF',
+              borderRadius: 2,
+              cursor: b.disabled ? 'not-allowed' : 'pointer',
+              fontSize: 15,
+              fontFamily: 'monospace',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: b.disabled ? 0.6 : 1,
+            }}
+          >
+            {b.ch}
+          </button>
         ))}
       </div>
       <div style={{ position: 'absolute', bottom: 38, left: 12, display: 'flex', flexDirection: 'column', gap: 3, zIndex: 10, pointerEvents: 'none' }}>
