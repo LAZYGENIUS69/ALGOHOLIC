@@ -34,6 +34,12 @@ The average developer spends **58% of their time understanding code, not writing
 ### AI Query
 ![AI Query](docs/screenshots/ai-query.png)
 
+### Process Flows
+![Processes](docs/screenshots/processes.png)
+
+### Intelligence Report
+![Report](docs/screenshots/report.png)
+
 ---
 
 ## Live Demo
