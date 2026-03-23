@@ -10,9 +10,9 @@ import multer from "multer";
 import AdmZip from "adm-zip";
 import Cerebras from "@cerebras/cerebras_cloud_sdk";
 import Groq from "groq-sdk";
+import fetch from "node-fetch";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
-import simpleGit from "simple-git";
 import { buildGraph, GraphData } from "./graph-builder";
 import { setGraph } from "./graph-store";
 import { startMCPServer } from "./mcp-server";
@@ -26,7 +26,7 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_SOURCE_FILES = 2500;
 const MAX_TOTAL_SOURCE_BYTES = 25 * 1024 * 1024;
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
-const GITHUB_CLONE_TIMEOUT_MS = 30_000;
+const GITHUB_DOWNLOAD_TIMEOUT_MS = 30_000;
 const fileCache = new Map<string, string>();
 
 interface ProcessDefinition {
@@ -750,7 +750,7 @@ function normalizeRepoPath(filePath: string): string {
   return filePath.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
-function validateGitHubUrl(input: string): string {
+function parseGitHubRepo(input: string): { owner: string; repo: string } {
   const trimmed = input.trim();
   if (!trimmed) {
     throw new CloneValidationError("Please enter a valid GitHub URL");
@@ -774,7 +774,17 @@ function validateGitHubUrl(input: string): string {
     throw new CloneValidationError("Please enter a valid GitHub URL");
   }
 
-  return `https://github.com/${pathParts[0]}/${pathParts[1].replace(/\.git$/i, "")}`;
+  return {
+    owner: pathParts[0],
+    repo: pathParts[1].replace(/\.git$/i, ""),
+  };
+}
+
+function buildGithubZipUrls(owner: string, repo: string): string[] {
+  return [
+    `https://github.com/${owner}/${repo}/archive/refs/heads/main.zip`,
+    `https://github.com/${owner}/${repo}/archive/refs/heads/master.zip`,
+  ];
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -850,6 +860,48 @@ function collectSourceFilesFromZip(zip: AdmZip): SourceFile[] {
   return sourceFiles;
 }
 
+async function downloadGithubZip(owner: string, repo: string, tempZipPath: string): Promise<void> {
+  const zipUrls = buildGithubZipUrls(owner, repo);
+
+  for (const zipUrl of zipUrls) {
+    try {
+      const response = await withTimeout(fetch(zipUrl), GITHUB_DOWNLOAD_TIMEOUT_MS);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          continue;
+        }
+
+        if (response.status === 403 || response.status === 401) {
+          throw new CloneAccessError("Repository not found or is private");
+        }
+
+        throw new Error(`GitHub ZIP download failed with status ${response.status}`);
+      }
+
+      const arrayBuffer = await withTimeout(response.arrayBuffer(), GITHUB_DOWNLOAD_TIMEOUT_MS);
+      const buffer = Buffer.from(arrayBuffer);
+      await fs.writeFile(tempZipPath, buffer);
+      return;
+    } catch (error) {
+      if (error instanceof CloneTimeoutError) {
+        throw new CloneTooLargeError("Repository too large, try ZIP upload instead");
+      }
+
+      if (error instanceof CloneAccessError) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      if (message.includes("aborted") || message.includes("timeout")) {
+        throw new CloneTooLargeError("Repository too large, try ZIP upload instead");
+      }
+    }
+  }
+
+  throw new CloneAccessError("Repository not found or is private");
+}
+
 async function collectSourceFilesFromDirectory(rootDir: string): Promise<SourceFile[]> {
   const sourceFiles: SourceFile[] = [];
   let totalSourceBytes = 0;
@@ -892,20 +944,14 @@ async function collectSourceFilesFromDirectory(rootDir: string): Promise<SourceF
 }
 
 async function cloneGithubRepository(githubUrl: string): Promise<GraphData> {
-  const normalizedUrl = validateGitHubUrl(githubUrl);
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vectron-clone-"));
-  const git = simpleGit();
+  const { owner, repo } = parseGitHubRepo(githubUrl);
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vectron-zip-"));
+  const tempZipPath = path.join(tempDir, `${repo}.zip`);
 
   try {
-    await withTimeout(
-      git.clone(normalizedUrl, tempDir, ["--depth", "1"]),
-      GITHUB_CLONE_TIMEOUT_MS,
-    );
-
-    const sourceFiles = await withTimeout(
-      collectSourceFilesFromDirectory(tempDir),
-      GITHUB_CLONE_TIMEOUT_MS,
-    );
+    await downloadGithubZip(owner, repo, tempZipPath);
+    const zipBuffer = await fs.readFile(tempZipPath);
+    const sourceFiles = collectSourceFilesFromZip(new AdmZip(zipBuffer));
 
     if (sourceFiles.length === 0) {
       throw new CloneValidationError(
@@ -936,6 +982,7 @@ async function cloneGithubRepository(githubUrl: string): Promise<GraphData> {
 
     throw error;
   } finally {
+    await fs.unlink(tempZipPath).catch(() => undefined);
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
@@ -1006,7 +1053,7 @@ app.post("/api/clone", async (req, res) => {
     }
 
     if (error instanceof CloneTimeoutError) {
-      res.status(408).json({ error: "Repository clone timed out after 30 seconds" });
+      res.status(408).json({ error: "Repository too large, try ZIP upload instead" });
       return;
     }
 
