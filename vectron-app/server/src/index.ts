@@ -2,6 +2,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
+import fs from "fs/promises";
+import os from "os";
 import path from "path";
 import cors from "cors";
 import multer from "multer";
@@ -10,6 +12,7 @@ import Cerebras from "@cerebras/cerebras_cloud_sdk";
 import Groq from "groq-sdk";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
+import simpleGit from "simple-git";
 import { buildGraph, GraphData } from "./graph-builder";
 import { setGraph } from "./graph-store";
 import { startMCPServer } from "./mcp-server";
@@ -23,6 +26,7 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_SOURCE_FILES = 2500;
 const MAX_TOTAL_SOURCE_BYTES = 25 * 1024 * 1024;
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+const GITHUB_CLONE_TIMEOUT_MS = 30_000;
 const fileCache = new Map<string, string>();
 
 interface ProcessDefinition {
@@ -70,6 +74,16 @@ interface LLMCompletionResponse {
     };
   }>;
 }
+
+interface SourceFile {
+  path: string;
+  content: string;
+}
+
+class CloneValidationError extends Error {}
+class CloneTimeoutError extends Error {}
+class CloneAccessError extends Error {}
+class CloneTooLargeError extends Error {}
 
 function isSmallCodebase(graphData: GraphData): boolean {
   return graphData.nodes.length < 200;
@@ -714,8 +728,12 @@ const upload = multer({
   },
 });
 
+function isIgnoredSourcePath(entryPath: string): boolean {
+  return /(node_modules|\.git|dist|build|\.next|coverage|vendor|target|__pycache__)\//.test(entryPath);
+}
+
 function isSupportedSourceFile(entryPath: string): boolean {
-  if (/(node_modules|\.git|dist|build|\.next|coverage|vendor|target|__pycache__)\//.test(entryPath)) {
+  if (isIgnoredSourcePath(entryPath)) {
     return false;
   }
 
@@ -728,77 +746,272 @@ function isSupportedSourceFile(entryPath: string): boolean {
   return /\.(js|jsx|ts|tsx|py|json|ya?ml|md)$/i.test(entryPath);
 }
 
-app.post("/api/upload", upload.single("file"), (req, res) => {
-  if (!req.file) {
-    res.status(400).json({ error: "No file uploaded" });
-    return;
+function normalizeRepoPath(filePath: string): string {
+  return filePath.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function validateGitHubUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new CloneValidationError("Please enter a valid GitHub URL");
   }
 
+  let parsed: URL;
   try {
-    const zip = new AdmZip(req.file.buffer);
-    const entries = zip.getEntries();
+    parsed = new URL(trimmed);
+  } catch {
+    throw new CloneValidationError("Please enter a valid GitHub URL");
+  }
 
-    const sourceFiles: { path: string; content: string }[] = [];
-    let skippedOversized = 0;
-    let skippedUnreadable = 0;
-    let skippedByBudget = 0;
-    let totalSourceBytes = 0;
+  const hostname = parsed.hostname.toLowerCase();
+  const pathParts = parsed.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+
+  if (
+    parsed.protocol !== "https:" ||
+    !["github.com", "www.github.com"].includes(hostname) ||
+    pathParts.length < 2
+  ) {
+    throw new CloneValidationError("Please enter a valid GitHub URL");
+  }
+
+  return `https://github.com/${pathParts[0]}/${pathParts[1].replace(/\.git$/i, "")}`;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new CloneTimeoutError("Clone timed out")), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+function processSourceFiles(sourceFiles: SourceFile[]): GraphData {
+  fileCache.clear();
+  for (const file of sourceFiles) {
+    fileCache.set(file.path, file.content);
+  }
+
+  const graphData = buildGraph(sourceFiles);
+  setGraph(graphData);
+  return graphData;
+}
+
+function collectSourceFilesFromZip(zip: AdmZip): SourceFile[] {
+  const entries = zip.getEntries();
+  const sourceFiles: SourceFile[] = [];
+  let skippedOversized = 0;
+  let skippedUnreadable = 0;
+  let skippedByBudget = 0;
+  let totalSourceBytes = 0;
+
+  for (const entry of entries) {
+    if (sourceFiles.length >= MAX_SOURCE_FILES) break;
+    if (entry.isDirectory) continue;
+
+    const entryPath = normalizeRepoPath(entry.entryName);
+    if (!isSupportedSourceFile(entryPath)) continue;
+
+    if (entry.header.size > MAX_FILE_BYTES) {
+      skippedOversized++;
+      continue;
+    }
+
+    if (totalSourceBytes + entry.header.size > MAX_TOTAL_SOURCE_BYTES) {
+      skippedByBudget++;
+      continue;
+    }
+
+    try {
+      const content = entry.getData().toString("utf-8");
+      sourceFiles.push({ path: entryPath, content });
+      totalSourceBytes += entry.header.size;
+    } catch {
+      skippedUnreadable++;
+    }
+  }
+
+  if (skippedOversized > 0 || skippedUnreadable > 0 || skippedByBudget > 0) {
+    console.warn(
+      `[VECTRON] ZIP sampled: skipped ${skippedOversized} oversized file(s) ` +
+        `(>${MAX_FILE_BYTES / 1024}KB), ${skippedUnreadable} unreadable file(s), and ${skippedByBudget} file(s) due to the parser budget. ` +
+        `Processing ${sourceFiles.length} of eligible source files.`,
+    );
+  } else {
+    console.log(`[VECTRON] Processing ${sourceFiles.length} source file(s).`);
+  }
+
+  return sourceFiles;
+}
+
+async function collectSourceFilesFromDirectory(rootDir: string): Promise<SourceFile[]> {
+  const sourceFiles: SourceFile[] = [];
+  let totalSourceBytes = 0;
+
+  async function walk(currentDir: string): Promise<void> {
+    const entries = await fs.readdir(currentDir, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (sourceFiles.length >= MAX_SOURCE_FILES) break;
-      if (entry.isDirectory) continue;
+      const absolutePath = path.join(currentDir, entry.name);
+      const relativePath = normalizeRepoPath(path.relative(rootDir, absolutePath));
 
-      const entryPath = entry.entryName;
-
-      if (!isSupportedSourceFile(entryPath)) continue;
-
-      if (entry.header.size > MAX_FILE_BYTES) {
-        skippedOversized++;
+      if (entry.isDirectory()) {
+        if (relativePath && isIgnoredSourcePath(`${relativePath}/`)) {
+          continue;
+        }
+        await walk(absolutePath);
         continue;
       }
 
-      if (totalSourceBytes + entry.header.size > MAX_TOTAL_SOURCE_BYTES) {
-        skippedByBudget++;
-        continue;
+      if (!isSupportedSourceFile(relativePath)) continue;
+
+      const stats = await fs.stat(absolutePath);
+      if (stats.size > MAX_FILE_BYTES) {
+        throw new CloneTooLargeError("Repository too large, please use ZIP upload");
       }
 
-      try {
-        const content = entry.getData().toString("utf-8");
-        sourceFiles.push({ path: entryPath, content });
-        totalSourceBytes += entry.header.size;
-      } catch {
-        skippedUnreadable++;
+      if (sourceFiles.length >= MAX_SOURCE_FILES || totalSourceBytes + stats.size > MAX_TOTAL_SOURCE_BYTES) {
+        throw new CloneTooLargeError("Repository too large, please use ZIP upload");
       }
-    }
 
-    if (skippedOversized > 0 || skippedUnreadable > 0 || skippedByBudget > 0) {
-      console.warn(
-        `[VECTRON] ZIP sampled: skipped ${skippedOversized} oversized file(s) ` +
-          `(>${MAX_FILE_BYTES / 1024}KB), ${skippedUnreadable} unreadable file(s), and ${skippedByBudget} file(s) due to the parser budget. ` +
-          `Processing ${sourceFiles.length} of eligible source files.`,
-      );
-    } else {
-      console.log(`[VECTRON] Processing ${sourceFiles.length} source file(s).`);
+      const content = await fs.readFile(absolutePath, "utf-8");
+      sourceFiles.push({ path: relativePath, content });
+      totalSourceBytes += stats.size;
     }
+  }
 
-    fileCache.clear();
-    for (const file of sourceFiles) {
-      fileCache.set(file.path, file.content);
-    }
+  await walk(rootDir);
+  console.log(`[VECTRON] Processing ${sourceFiles.length} cloned source file(s).`);
+  return sourceFiles;
+}
+
+async function cloneGithubRepository(githubUrl: string): Promise<GraphData> {
+  const normalizedUrl = validateGitHubUrl(githubUrl);
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vectron-clone-"));
+  const git = simpleGit();
+
+  try {
+    await withTimeout(
+      git.clone(normalizedUrl, tempDir, ["--depth", "1"]),
+      GITHUB_CLONE_TIMEOUT_MS,
+    );
+
+    const sourceFiles = await withTimeout(
+      collectSourceFilesFromDirectory(tempDir),
+      GITHUB_CLONE_TIMEOUT_MS,
+    );
 
     if (sourceFiles.length === 0) {
-      res.status(422).json({
-        error: "No supported JS, TS, Python, JSON, YAML, or Markdown files found in the zip",
-      });
+      throw new CloneValidationError(
+        "No supported JS, TS, Python, JSON, YAML, or Markdown files found in the repository",
+      );
+    }
+
+    return processSourceFiles(sourceFiles);
+  } catch (error) {
+    if (
+      error instanceof CloneValidationError ||
+      error instanceof CloneTimeoutError ||
+      error instanceof CloneTooLargeError
+    ) {
+      throw error;
+    }
+
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    if (
+      message.includes("repository not found") ||
+      message.includes("authentication failed") ||
+      message.includes("could not read username") ||
+      message.includes("access denied") ||
+      message.includes("not found")
+    ) {
+      throw new CloneAccessError("Repository is private or not found");
+    }
+
+    throw error;
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+app.post("/api/upload", (req, res) => {
+  upload.single("file")(req, res, (uploadError: unknown) => {
+    if (uploadError instanceof multer.MulterError) {
+      if (uploadError.code === "LIMIT_FILE_SIZE") {
+        res.status(413).json({
+          error: `ZIP file is too large. Upload a file smaller than ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))}MB.`,
+        });
+        return;
+      }
+
+      res.status(400).json({ error: `Upload failed: ${uploadError.message}` });
       return;
     }
 
-    const graphData = buildGraph(sourceFiles);
-    setGraph(graphData);
+    if (uploadError instanceof Error) {
+      res.status(400).json({ error: uploadError.message });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ error: "No file uploaded" });
+      return;
+    }
+
+    try {
+      const sourceFiles = collectSourceFilesFromZip(new AdmZip(req.file.buffer));
+
+      if (sourceFiles.length === 0) {
+        res.status(422).json({
+          error: "No supported JS, TS, Python, JSON, YAML, or Markdown files found in the zip",
+        });
+        return;
+      }
+
+      res.json(processSourceFiles(sourceFiles));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      console.error("[VECTRON] Upload error:", message);
+      res.status(500).json({ error: `Processing failed: ${message}` });
+    }
+  });
+});
+
+app.post("/api/clone", async (req, res) => {
+  const { githubUrl } = req.body as { githubUrl?: string };
+
+  try {
+    const graphData = await cloneGithubRepository(githubUrl ?? "");
     res.json(graphData);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[VECTRON] Upload error:", message);
+  } catch (error) {
+    if (error instanceof CloneValidationError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    if (error instanceof CloneAccessError) {
+      res.status(404).json({ error: error.message });
+      return;
+    }
+
+    if (error instanceof CloneTooLargeError) {
+      res.status(413).json({ error: error.message });
+      return;
+    }
+
+    if (error instanceof CloneTimeoutError) {
+      res.status(408).json({ error: "Repository clone timed out after 30 seconds" });
+      return;
+    }
+
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[VECTRON] Clone error:", message);
     res.status(500).json({ error: `Processing failed: ${message}` });
   }
 });

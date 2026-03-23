@@ -80,6 +80,20 @@ export async function uploadZip(file: File): Promise<GraphData> {
     return res.json() as Promise<GraphData>;
 }
 
+export async function cloneGithubRepo(githubUrl: string): Promise<GraphData> {
+    const res = await fetchFromApi(`${BASE}/clone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ githubUrl }),
+    });
+
+    if (!res.ok) {
+        throw await buildApiError(res);
+    }
+
+    return res.json() as Promise<GraphData>;
+}
+
 /** Fetch source code of a specific file from the server cache. */
 export async function fetchFile(filePath: string): Promise<string> {
     const res = await fetchFromApi(`${BASE}/file?path=${encodeURIComponent(filePath)}`);
