@@ -32,6 +32,7 @@ const fileCache = new Map<string, string>();
 interface ProcessDefinition {
   name: string;
   steps: number;
+  entryPoint: string;
   explanation: string;
   mermaid: string;
 }
@@ -83,6 +84,7 @@ interface LLMCallResult {
 interface LLMCallOptions {
   asi1Temperature?: number;
   asi1Reasoning?: boolean;
+  maxTokens?: number;
 }
 
 interface SourceFile {
@@ -115,7 +117,7 @@ function hasValidCerebrasApiKey(): boolean {
 }
 
 function isLLMProviderKey(value: string): value is LLMProviderKey {
-  return ["auto", "openai", "anthropic", "groq", "cerebras", "custom"].includes(value);
+  return ["auto", "asi1", "openai", "anthropic", "groq", "cerebras", "custom"].includes(value);
 }
 
 function formatProviderName(provider: string): string {
@@ -189,7 +191,7 @@ export async function callLLM(
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userMessage },
           ],
-          max_tokens: 2048,
+          max_tokens: options.maxTokens ?? 2048,
           ...(typeof options.asi1Temperature === "number"
             ? { temperature: options.asi1Temperature }
             : {}),
@@ -209,7 +211,7 @@ export async function callLLM(
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userMessage },
           ],
-          max_tokens: 2048,
+          max_tokens: options.maxTokens ?? 2048,
           temperature: 0.3,
         });
         return (res as LLMCompletionResponse).choices?.[0]?.message?.content ?? "";
@@ -225,7 +227,7 @@ export async function callLLM(
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userMessage },
           ],
-          max_tokens: 2048,
+          max_tokens: options.maxTokens ?? 2048,
         });
         return (res as LLMCompletionResponse).choices?.[0]?.message?.content ?? "";
       },
@@ -285,7 +287,7 @@ async function callLLMWithConfig(
         { role: "system" as const, content: systemPrompt },
         { role: "user" as const, content: userMessage },
       ],
-      max_tokens: 1024,
+      max_tokens: options.maxTokens ?? 1024,
       ...(typeof options.asi1Temperature === "number"
         ? { temperature: options.asi1Temperature }
         : {}),
@@ -309,7 +311,7 @@ async function callLLMWithConfig(
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      max_tokens: 1024,
+      max_tokens: options.maxTokens ?? 1024,
     });
     return {
       content: res.choices[0]?.message?.content ?? "",
@@ -322,6 +324,7 @@ async function callLLMWithConfig(
     const res = await client.messages.create({
       model: config.model,
       max_tokens: 1024,
+      ...(typeof options.maxTokens === "number" ? { max_tokens: options.maxTokens } : {}),
       messages: [{ role: "user", content: userMessage }],
       system: systemPrompt,
     });
@@ -339,7 +342,7 @@ async function callLLMWithConfig(
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      max_tokens: 1024,
+      max_tokens: options.maxTokens ?? 1024,
     });
     return {
       content: (res as LLMCompletionResponse).choices?.[0]?.message?.content ?? "",
@@ -355,7 +358,7 @@ async function callLLMWithConfig(
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      max_tokens: 1024,
+      max_tokens: options.maxTokens ?? 1024,
     });
     return {
       content: (res as LLMCompletionResponse).choices?.[0]?.message?.content ?? "",
@@ -435,6 +438,8 @@ function sanitizeProcesses(
 
       const candidate = item as Partial<ProcessDefinition>;
       const name = typeof candidate.name === "string" ? candidate.name.trim() : "";
+      const entryPoint =
+        typeof candidate.entryPoint === "string" ? candidate.entryPoint.trim() : "";
       const explanation =
         typeof candidate.explanation === "string" ? candidate.explanation.trim() : "";
       const mermaid = typeof candidate.mermaid === "string" ? candidate.mermaid.trim() : "";
@@ -448,11 +453,24 @@ function sanitizeProcesses(
         labels.length >= minimumSteps && labels.every((label) => allowedLabels.has(label));
       const hasFocusNode = !focusNode || labels.includes(focusNode);
 
-      if (!name || !explanation || !mermaid || steps < minimumSteps || !hasOnlyKnownLabels || !hasFocusNode) {
+      if (
+        !name ||
+        !explanation ||
+        !mermaid ||
+        steps < minimumSteps ||
+        !hasOnlyKnownLabels ||
+        !hasFocusNode
+      ) {
         return null;
       }
 
-      return { name, steps, explanation, mermaid };
+      return {
+        name,
+        steps,
+        entryPoint: entryPoint || labels[0] || name,
+        explanation,
+        mermaid,
+      };
     })
     .filter((process): process is ProcessDefinition => process !== null);
 }
@@ -592,6 +610,7 @@ function detectHeuristicProcesses(
     processes.push({
       name: `${sanitizeMermaidLabel(startNode.label)} Flow`,
       steps: pathNodes.length,
+      entryPoint: startNode.label,
       explanation: `Heuristic flow beginning at ${startNode.label} and following the strongest reachable dependencies in the current graph.`,
       mermaid: mermaidLines.join("\n"),
     });
@@ -833,6 +852,7 @@ Return exactly one sentence with no markdown and no bullets.`;
 app.post("/api/processes", async (req, res) => {
   const { graphData: requestGraphData, focusNode } = req.body as { graphData?: GraphData; focusNode?: string };
   const graphData = resolveGraphData(requestGraphData);
+  const minimumSteps = 3;
 
   if (!graphData) {
     res.status(400).json({ error: "No graph loaded" });
@@ -841,42 +861,64 @@ app.post("/api/processes", async (req, res) => {
 
   try {
     const summary = buildCompactGraphSummary(graphData);
-    const smallCodebase = isSmallCodebase(graphData);
     const allowedLabels = new Set(graphData.nodes.map((node) => node.label));
-    const minimumSteps = smallCodebase ? 2 : 3;
-    const systemPrompt = `You are an expert software architect. You have been given a dependency graph of a real codebase as nodes and edges.
+    const systemPrompt = `You are an expert software architect with deep reasoning capabilities.
+You have been given a complete dependency graph of a real codebase.
 
-Analyze the graph and detect all meaningful processes - a process is a complete flow from a trigger point (user action, API call, event) through to an output or side effect.
+Your task is to detect ALL meaningful processes in this codebase.
+A process is a complete execution flow from a trigger point 
+(user action, API call, event handler, entry point) through 
+every function call, all the way to a final output or side effect.
 
-For each process generate a Mermaid flowchart diagram.
+Think step by step:
 
-If the codebase is small (under 200 nodes), still detect 3-5 processes even if they are simple. A process can be as small as 2-3 steps.
-For small codebases prioritize: the main data flow, the render cycle, and any user interaction handler.
-Never return an empty processes array - always return at least 3 processes.
-${focusNode ? `Focus specifically on processes that involve the node '${focusNode}'.
-Only return processes where this node appears as a step.` : ""}
+STEP 1 - Find all entry points:
+Look for nodes that have zero or few incoming edges but many 
+outgoing edges. These are likely entry points:
+- Event handlers (onClick, onSubmit, handleX)
+- API endpoints (/api/*)
+- Main functions
+- React component mount effects
 
-You MUST respond with ONLY valid JSON, no markdown, no backticks:
+STEP 2 - Trace each entry point:
+For each entry point, follow the outgoing edges through the graph.
+Map the complete execution chain until you reach leaf nodes.
+
+STEP 3 - Name each process:
+Give each process a human readable name describing what it does
+from a user perspective. Example: 'File Upload Flow' not 'handleUpload chain'
+
+STEP 4 - Generate Mermaid diagram:
+For each process create a valid Mermaid flowchart showing
+every step in the execution chain.
+
+RETURN strictly valid JSON only:
 {
-  "processes": [
+  'processes': [
     {
-      "name": "File Upload Flow",
-      "steps": 5,
-      "explanation": "plain english description of what this process does",
-      "mermaid": "graph TD\\n  A[UploadZone] --> B[api.ts]\\n  B --> C[/api/upload]\\n  C --> D[parser.ts]\\n  D --> E[GraphView2D]"
+      'name': 'human readable process name',
+      'steps': number of nodes in the chain,
+      'entryPoint': 'the starting node label',
+      'explanation': 'plain english description of what this process does and why it matters',
+      'mermaid': 'graph TD\n  A[entryPoint] --> B[step2]\n  B --> C[step3]...'
     }
   ]
 }
 
-Rules:
-- Detect 5-10 most important processes only
-- Only reference nodes that exist in the provided graph
-- Mermaid syntax must be valid - use graph TD format
-- Each process must have at least ${minimumSteps} steps
-- Process names must be human readable like 'File Upload Flow'
-- Never invent nodes that dont exist in the graph`;
+${focusNode ? `Focus specifically on processes that involve the node '${focusNode}'.
+Only return processes where this node appears as a step.` : ""}
 
-    const text = await callLLM(systemPrompt, `GRAPH DATA:\n${summary}`);
+Rules:
+- Detect minimum 5 processes, maximum 15
+- Each process must have at least ${minimumSteps} steps
+- Only use node labels that actually exist in the provided graph
+- Never return empty processes array
+- Mermaid syntax must be valid graph TD format`;
+
+    const text = await callLLM(systemPrompt, `GRAPH DATA:\n${summary}`, {
+      asi1Reasoning: true,
+      maxTokens: 4096,
+    });
 
     try {
       const jsonStr = text.content.replace(/```json\n?|```/g, "").trim();
@@ -899,7 +941,7 @@ Rules:
   } catch (err: unknown) {
     console.error("[LLM] Process detection error:", err);
     try {
-      const fallbackProcesses = detectHeuristicProcesses(graphData, isSmallCodebase(graphData) ? 2 : 3, focusNode);
+      const fallbackProcesses = detectHeuristicProcesses(graphData, minimumSteps, focusNode);
       if (fallbackProcesses.length > 0) {
         res.json({ processes: fallbackProcesses });
         return;
