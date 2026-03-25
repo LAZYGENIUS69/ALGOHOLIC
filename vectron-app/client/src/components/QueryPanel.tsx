@@ -93,12 +93,20 @@ function isCustomConfigActive(config: LLMConfig) {
     return config.provider !== 'auto' && config.apiKey.trim().length > 0;
 }
 
-function getPoweredByLabel(config: LLMConfig) {
-    if (!isCustomConfigActive(config) || config.provider === 'auto') {
-        return 'ASI-1 (auto)';
+function getPoweredByText(config: LLMConfig, lastProviderUsed: string) {
+    const provider = lastProviderUsed || (!isCustomConfigActive(config) || config.provider === 'auto'
+        ? 'ASI-1'
+        : PROVIDER_LABELS[config.provider]);
+
+    if (provider === 'ASI-1') {
+        return 'Powered by ASI:One ⚡';
     }
 
-    return `${PROVIDER_LABELS[config.provider]} (custom)`;
+    if (!isCustomConfigActive(config) || config.provider === 'auto') {
+        return `Powered by: ${provider}`;
+    }
+
+    return `Powered by: ${provider} (custom)`;
 }
 
 function GearIcon() {
@@ -197,7 +205,7 @@ export default function QueryPanel({
         return true;
     }, [draftConfig]);
     const poweredByLabel = useMemo(
-        () => lastProviderUsed || getPoweredByLabel(savedConfig),
+        () => getPoweredByText(savedConfig, lastProviderUsed),
         [lastProviderUsed, savedConfig],
     );
 
@@ -310,7 +318,7 @@ export default function QueryPanel({
                 <div className="ask-ai-pane-header">
                     <div className="ask-ai-header-copy">
                         <h2 className="ask-ai-title">ASK YOUR CODEBASE</h2>
-                        <p className="ask-ai-provider-line">Powered by: {poweredByLabel}</p>
+                        <p className="ask-ai-provider-line">{poweredByLabel}</p>
                     </div>
                     <div className="ask-ai-header-actions">
                         {hasResult && (
@@ -356,6 +364,10 @@ export default function QueryPanel({
                                 ))}
                             </select>
                         </label>
+
+                        {draftConfig.provider === 'asi1' && (
+                            <p className="ask-ai-subtitle">Primary provider - extended reasoning enabled</p>
+                        )}
 
                         <label className="ask-ai-settings-field">
                             <span>API Key</span>

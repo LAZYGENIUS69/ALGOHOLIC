@@ -80,6 +80,11 @@ interface LLMCallResult {
   provider: string;
 }
 
+interface LLMCallOptions {
+  asi1Temperature?: number;
+  asi1Reasoning?: boolean;
+}
+
 interface SourceFile {
   path: string;
   content: string;
@@ -164,7 +169,11 @@ function normalizeLLMConfig(config?: Partial<LLMConfigPayload> | null): CustomLL
   };
 }
 
-export async function callLLM(systemPrompt: string, userMessage: string): Promise<LLMCallResult> {
+export async function callLLM(
+  systemPrompt: string,
+  userMessage: string,
+  options: LLMCallOptions = {},
+): Promise<LLMCallResult> {
   const providers: LLMProvider[] = [
     {
       name: "ASI-1",
@@ -174,14 +183,19 @@ export async function callLLM(systemPrompt: string, userMessage: string): Promis
           apiKey: process.env.ASI1_API_KEY,
           baseURL: "https://api.asi1.ai/v1",
         });
-        const res = await client.chat.completions.create({
+        const request = {
           model: "asi1",
           messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userMessage },
+            { role: "system" as const, content: systemPrompt },
+            { role: "user" as const, content: userMessage },
           ],
           max_tokens: 2048,
-        });
+          ...(typeof options.asi1Temperature === "number"
+            ? { temperature: options.asi1Temperature }
+            : {}),
+          ...(options.asi1Reasoning ? { reasoning: true } : {}),
+        };
+        const res = await client.chat.completions.create(request);
         return res.choices[0]?.message?.content ?? "";
       },
     },
@@ -258,20 +272,26 @@ async function callLLMWithConfig(
   systemPrompt: string,
   userMessage: string,
   config: CustomLLMConfig,
+  options: LLMCallOptions = {},
 ): Promise<LLMCallResult> {
   if (config.provider === "asi1") {
     const client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: config.baseUrl || "https://api.asi1.ai/v1",
     });
-    const res = await client.chat.completions.create({
+    const request = {
       model: config.model,
       messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
+        { role: "system" as const, content: systemPrompt },
+        { role: "user" as const, content: userMessage },
       ],
       max_tokens: 1024,
-    });
+      ...(typeof options.asi1Temperature === "number"
+        ? { temperature: options.asi1Temperature }
+        : {}),
+      ...(options.asi1Reasoning ? { reasoning: true } : {}),
+    };
+    const res = await client.chat.completions.create(request);
     return {
       content: res.choices[0]?.message?.content ?? "",
       provider: "ASI-1",
@@ -688,6 +708,7 @@ app.post("/api/query", async (req, res) => {
     const summary = buildCompactGraphSummary(graphData);
 
     const systemPrompt = `You are an expert software architect analyzing a real codebase.
+You are powered by ASI:One - an intelligent AI that combines reasoning and analysis capabilities.
 You have been given the actual nodes and edges of a dependency graph.
 
 When answering questions, you MUST follow this exact format:
@@ -904,6 +925,8 @@ app.post("/api/report", async (req, res) => {
     const summary = buildCompactGraphSummary(graphData);
     const stats = computeReportStats(graphData);
     const systemPrompt = `You are a senior software architect. Analyze this codebase knowledge graph and generate a comprehensive intelligence report.
+Use extended reasoning to deeply analyze this codebase.
+Think step by step before writing each section.
 
 Respond in clean markdown format with these exact sections:
 
@@ -944,6 +967,10 @@ Be specific, technical, and useful. Write like a senior engineer.`;
     const text = await callLLM(
       systemPrompt,
       `GRAPH DATA:\n${summary}\n\nEXACT STATS:\n- Total files parsed: ${stats.totalFiles}\n- Total functions detected: ${stats.totalFunctions}\n- Most connected component: ${stats.mostConnectedComponent} (${stats.mostConnectedDegree} connections)\n- Deepest dependency chain: ${stats.deepestDependencyChain} (${stats.deepestDependencyDepth} hops)`,
+      {
+        asi1Temperature: 0.2,
+        asi1Reasoning: true,
+      },
     );
 
     res.json({ report: text.content.trim() });
