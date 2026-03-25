@@ -107,9 +107,6 @@ Bring your own API key. Configure any LLM provider directly in the UI:
 ### 🔗 GitHub URL Analysis
 Paste any public GitHub repository URL directly — no ZIP download needed. VECTRON fetches and analyzes the repo instantly.
 
-### 💀 Dead Code Detector
-One click finds all nodes with zero incoming edges — potentially unused code that can be safely removed.
-
 ### 🔗 Shareable Graph Links
 Generate a unique URL to share your dependency graph with anyone. Links expire after 24 hours.
 
