@@ -13,8 +13,9 @@ import QueryPanel from './components/QueryPanel';
 import ProcessPanel from './components/ProcessPanel';
 import ReportModal from './components/ReportModal';
 import MetricsDashboard from './components/MetricsDashboard';
+import AgentPanel from './components/AgentPanel';
 
-type AppTab = 'graph' | 'processes' | 'ask-ai' | 'metrics' | 'report';
+type AppTab = 'graph' | 'processes' | 'ask-ai' | 'metrics' | 'report' | 'agents';
 type LeftSidebarTab = 'explorer' | 'filters';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 768px)';
 
@@ -420,6 +421,14 @@ export default function App() {
             return (
                 <div className="tab-page-shell">
                     <MetricsDashboard graph={graph} />
+                </div>
+            );
+        }
+
+        if (activeTab === 'agents') {
+            return (
+                <div className="tab-page-shell">
+                    <AgentPanel graph={graph} />
                 </div>
             );
         }

@@ -7,12 +7,21 @@ interface HeaderProps {
     hasGraph: boolean;
     nodeCount: number;
     edgeCount: number;
-    activeTab: 'graph' | 'processes' | 'ask-ai' | 'metrics' | 'report';
-    onTabChange: (tab: 'graph' | 'processes' | 'ask-ai' | 'metrics' | 'report') => void;
+    activeTab: 'graph' | 'processes' | 'ask-ai' | 'metrics' | 'report' | 'agents';
+    onTabChange: (tab: 'graph' | 'processes' | 'ask-ai' | 'metrics' | 'report' | 'agents') => void;
 }
 
 export default function Header({
-    vectronMode, onToggleVectron, fileViewMode, onToggleFileView, onUploadNew, hasGraph, nodeCount, edgeCount, activeTab, onTabChange,
+    vectronMode,
+    onToggleVectron,
+    fileViewMode,
+    onToggleFileView,
+    onUploadNew,
+    hasGraph,
+    nodeCount,
+    edgeCount,
+    activeTab,
+    onTabChange,
 }: HeaderProps) {
     const tabs: Array<{ id: HeaderProps['activeTab']; label: string; shortLabel: string }> = [
         { id: 'graph', label: 'GRAPH', shortLabel: 'GRAPH' },
@@ -20,6 +29,7 @@ export default function Header({
         { id: 'ask-ai', label: 'ASK AI', shortLabel: 'AI' },
         { id: 'metrics', label: 'METRICS', shortLabel: 'STATS' },
         { id: 'report', label: 'REPORT', shortLabel: 'DOCS' },
+        { id: 'agents', label: 'AGENTS', shortLabel: 'AGENTS' },
     ];
 
     return (
@@ -28,14 +38,18 @@ export default function Header({
                 <div className="header-brand">
                     <span className="header-brand-dot" />
                     <span className="header-brand-wordmark">VECTRON</span>
+                    {hasGraph && <span className="header-asi-badge">⚡ ASI:ONE</span>}
                     <span className="header-tagline">dependency propagation engine</span>
                 </div>
 
                 {hasGraph && (
-                    <div className="graph-badge">
-                        <span>{nodeCount} nodes</span>
-                        <span className="badge-div">·</span>
-                        <span>{edgeCount} edges</span>
+                    <div className="header-graph-meta">
+                        <div className="graph-badge">
+                            <span>{nodeCount} nodes</span>
+                            <span className="badge-div">·</span>
+                            <span>{edgeCount} edges</span>
+                        </div>
+                        <div className="header-powered-line">Analysis powered by ⚡ ASI:One</div>
                     </div>
                 )}
             </div>

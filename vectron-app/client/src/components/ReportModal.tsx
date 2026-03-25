@@ -244,6 +244,7 @@ export default function ReportModal({ graph }: ReportModalProps) {
                         <button className="report-generate-btn" onClick={loadReport}>
                             Generate Report
                         </button>
+                        <div className="report-powered-by">Powered by ASI:One Extended Reasoning</div>
                     </div>
                 )}
 

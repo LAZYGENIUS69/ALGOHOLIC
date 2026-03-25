@@ -31,8 +31,26 @@ export interface GraphData {
 export interface DetectedProcess {
     name: string;
     steps: number;
+    entryPoint?: string;
     explanation: string;
     mermaid: string;
+}
+
+export interface AgentCard {
+    title: string;
+    icon: string;
+    content: string;
+}
+
+export interface AgentAnalysisResponse {
+    agents: {
+        security: AgentCard;
+        architecture: AgentCard;
+        performance: AgentCard;
+        quality: AgentCard;
+        onboarding: AgentCard;
+    };
+    generatedAt: string;
 }
 
 export type LLMProvider = 'auto' | 'asi1' | 'openai' | 'anthropic' | 'groq' | 'cerebras' | 'custom';

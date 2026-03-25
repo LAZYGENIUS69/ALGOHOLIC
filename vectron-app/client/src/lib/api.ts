@@ -1,4 +1,4 @@
-import type { DetectedProcess, GraphData, LLMConfig } from '../types/graph';
+import type { AgentAnalysisResponse, DetectedProcess, GraphData, LLMConfig } from '../types/graph';
 
 const BASE = '/api';
 const HEALTH_ENDPOINT = '/health';
@@ -183,4 +183,29 @@ export async function generateReport(graphData: GraphData): Promise<string> {
 
     const body = await res.json().catch(() => ({ report: '' }));
     return typeof body.report === 'string' ? body.report : '';
+}
+
+export async function generateAgentAnalysis(graphData: GraphData): Promise<AgentAnalysisResponse> {
+    const res = await fetchFromApi(`${BASE}/agent-analysis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ graphData }),
+    });
+
+    if (!res.ok) {
+        throw await buildApiError(res);
+    }
+
+    const body = await res.json().catch(() => ({
+        agents: {
+            security: { title: 'Security Analysis', icon: '🔴', content: '' },
+            architecture: { title: 'Architecture Review', icon: '🔵', content: '' },
+            performance: { title: 'Performance Audit', icon: '🟡', content: '' },
+            quality: { title: 'Code Quality', icon: '🟢', content: '' },
+            onboarding: { title: 'Onboarding Guide', icon: '⚡', content: '' },
+        },
+        generatedAt: '',
+    }));
+
+    return body as AgentAnalysisResponse;
 }

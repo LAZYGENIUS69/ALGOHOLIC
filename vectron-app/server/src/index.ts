@@ -46,6 +46,23 @@ interface ReportStats {
   deepestDependencyDepth: number;
 }
 
+interface AgentCardResponse {
+  title: string;
+  icon: string;
+  content: string;
+}
+
+interface AgentAnalysisResponse {
+  agents: {
+    security: AgentCardResponse;
+    architecture: AgentCardResponse;
+    performance: AgentCardResponse;
+    quality: AgentCardResponse;
+    onboarding: AgentCardResponse;
+  };
+  generatedAt: string;
+}
+
 interface LLMProvider {
   name: string;
   isConfigured: boolean;
@@ -367,6 +384,41 @@ async function callLLMWithConfig(
   }
 
   throw new Error(`Unknown provider: ${config.provider}`);
+}
+
+async function callASI1Agent(systemPrompt: string, userMessage: string): Promise<string> {
+  const client = new OpenAI({
+    apiKey: process.env.ASI1_API_KEY,
+    baseURL: "https://api.asi1.ai/v1",
+  });
+  const res = await client.chat.completions.create({
+    model: "asi1",
+    messages: [
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: userMessage },
+    ],
+    max_tokens: 1024,
+    temperature: 0.2,
+  });
+  return res.choices[0]?.message?.content ?? "";
+}
+
+async function callAgentWithFallback(systemPrompt: string, userMessage: string): Promise<string> {
+  try {
+    const result = (await callASI1Agent(systemPrompt, userMessage)).trim();
+    if (result) {
+      return result;
+    }
+    throw new Error("ASI-1 returned an empty response");
+  } catch (error) {
+    console.warn("[ASI-1] Agent call failed, falling back to available LLM providers:", error);
+    const fallback = await callLLM(systemPrompt, userMessage, {
+      asi1Temperature: 0.2,
+      asi1Reasoning: true,
+      maxTokens: 1024,
+    });
+    return fallback.content;
+  }
 }
 
 function buildCompactGraphSummary(graphData: GraphData): string {
@@ -1020,6 +1072,126 @@ Be specific, technical, and useful. Write like a senior engineer.`;
     console.error("Report generation error:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     res.status(500).json({ error: `Report generation failed: ${message}`, report: "" });
+  }
+});
+
+app.post("/api/agent-analysis", async (req, res) => {
+  const { graphData: requestGraphData } = req.body as { graphData?: GraphData };
+  const graphData = resolveGraphData(requestGraphData);
+
+  if (!graphData) {
+    res.status(400).json({ error: "No graph loaded" });
+    return;
+  }
+
+  try {
+    const graphSummary = `GRAPH DATA:\n${buildCompactGraphSummary(graphData)}`;
+
+    const securityPrompt = `You are a senior security engineer analyzing a codebase knowledge graph. Identify security concerns including:
+- Exposed API endpoints with no apparent auth
+- Functions that handle user input (potential injection points)
+- Authentication and authorization patterns
+- Dependency on external services (attack surface)
+- Hardcoded values or config exposure risks
+
+Be specific. Reference actual node names from the graph.
+Format your response as:
+RISK LEVEL: HIGH/MEDIUM/LOW
+FINDINGS:
+1. [finding with specific node name]
+2. [finding with specific node name]
+RECOMMENDATIONS:
+1. [specific actionable recommendation]`;
+
+    const architecturePrompt = `You are a senior software architect analyzing a codebase knowledge graph. Analyze the architectural quality including:
+- Circular dependencies between modules
+- Coupling and cohesion between components
+- Separation of concerns violations
+- God objects or files with too many responsibilities
+- Module boundary violations
+
+Be specific. Reference actual node names from the graph.
+Format your response as:
+ARCHITECTURE SCORE: X/10
+FINDINGS:
+1. [finding with specific node name]
+RECOMMENDATIONS:
+1. [specific actionable recommendation]`;
+
+    const performancePrompt = `You are a performance engineering expert analyzing a codebase knowledge graph. Identify performance concerns including:
+- Hot paths (most called functions based on edge count)
+- Potential bottlenecks (high in-degree nodes)
+- Functions called in loops or render cycles
+- Heavy dependency chains that add latency
+
+Be specific. Reference actual node names from the graph.
+Format your response as:
+PERFORMANCE SCORE: X/10
+HOT PATHS:
+1. [node name] - called by N nodes
+BOTTLENECKS:
+1. [specific concern]
+RECOMMENDATIONS:
+1. [specific actionable recommendation]`;
+
+    const qualityPrompt = `You are a code quality expert analyzing a codebase knowledge graph. Assess code quality including:
+- Dead code (nodes with zero incoming edges)
+- Overly connected functions (god functions)
+- Naming convention consistency
+- Test coverage gaps (functions with no test-related callers)
+- Code duplication patterns
+
+Be specific. Reference actual node names from the graph.
+Format your response as:
+QUALITY SCORE: X/10
+ISSUES FOUND:
+1. [issue with specific node name]
+DEAD CODE CANDIDATES:
+1. [node name]
+RECOMMENDATIONS:
+1. [specific actionable recommendation]`;
+
+    const onboardingPrompt = `You are a senior developer creating an onboarding guide for a new developer joining this codebase. Based on the knowledge graph:
+- Identify the 5 most important files to read first
+- Explain the core data flow in plain English
+- Identify the main entry points
+- Explain what each major module does
+- Suggest a learning path
+
+Be specific. Reference actual node names from the graph.
+Format your response as:
+START HERE:
+1. [file name] - [why]
+CORE DATA FLOW:
+[plain english explanation]
+LEARNING PATH:
+1. [step]`;
+
+    const [security, architecture, performance, quality, onboarding] =
+      await Promise.all([
+        callAgentWithFallback(securityPrompt, graphSummary),
+        callAgentWithFallback(architecturePrompt, graphSummary),
+        callAgentWithFallback(performancePrompt, graphSummary),
+        callAgentWithFallback(qualityPrompt, graphSummary),
+        callAgentWithFallback(onboardingPrompt, graphSummary),
+      ]);
+
+    const payload: AgentAnalysisResponse = {
+      agents: {
+        security: { title: "Security Analysis", icon: "🔴", content: security },
+        architecture: { title: "Architecture Review", icon: "🔵", content: architecture },
+        performance: { title: "Performance Audit", icon: "🟡", content: performance },
+        quality: { title: "Code Quality", icon: "🟢", content: quality },
+        onboarding: { title: "Onboarding Guide", icon: "⚡", content: onboarding },
+      },
+      generatedAt: new Date().toISOString(),
+    };
+
+    res.json(payload);
+  } catch (err: unknown) {
+    console.error("[ASI:One] Multi-agent analysis error:", err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: `Agent analysis failed: ${message}` });
   }
 });
 

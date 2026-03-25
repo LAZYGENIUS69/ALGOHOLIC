@@ -99,7 +99,7 @@ function getPoweredByText(config: LLMConfig, lastProviderUsed: string) {
         : PROVIDER_LABELS[config.provider]);
 
     if (provider === 'ASI-1') {
-        return 'Powered by ASI:One ⚡';
+        return '\u26A1 Powered by ASI:One';
     }
 
     if (!isCustomConfigActive(config) || config.provider === 'auto') {
@@ -318,7 +318,7 @@ export default function QueryPanel({
                 <div className="ask-ai-pane-header">
                     <div className="ask-ai-header-copy">
                         <h2 className="ask-ai-title">ASK YOUR CODEBASE</h2>
-                        <p className="ask-ai-provider-line">{poweredByLabel}</p>
+                        <p className={`ask-ai-provider-line ${poweredByLabel.includes('ASI:One') ? 'ask-ai-provider-line-asi' : ''}`}>{poweredByLabel}</p>
                     </div>
                     <div className="ask-ai-header-actions">
                         {hasResult && (
