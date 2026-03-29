@@ -24,8 +24,8 @@ const DEFAULT_LLM_CONFIG: LLMConfig = {
 };
 
 const PROVIDER_OPTIONS: Array<{ value: LLMProvider; label: string }> = [
-    { value: 'auto', label: 'Auto (ASI-1 \u2192 Groq \u2192 Cerebras)' },
-    { value: 'asi1', label: 'ASI:One' },
+    { value: 'auto', label: 'Auto (featherless.ai \u2192 Groq \u2192 Cerebras)' },
+    { value: 'featherless', label: 'featherless.ai' },
     { value: 'openai', label: 'OpenAI' },
     { value: 'anthropic', label: 'Anthropic' },
     { value: 'groq', label: 'Groq' },
@@ -35,7 +35,7 @@ const PROVIDER_OPTIONS: Array<{ value: LLMProvider; label: string }> = [
 
 const PROVIDER_LABELS: Record<LLMProvider, string> = {
     auto: 'Auto',
-    asi1: 'ASI-1',
+    featherless: 'featherless.ai',
     openai: 'OpenAI',
     anthropic: 'Anthropic',
     groq: 'Groq',
@@ -44,8 +44,8 @@ const PROVIDER_LABELS: Record<LLMProvider, string> = {
 };
 
 const MODEL_PLACEHOLDERS: Record<LLMProvider, string> = {
-    auto: 'asi1 (default)',
-    asi1: 'asi1',
+    auto: 'mistralai/Mistral-7B-Instruct-v0.3 (default)',
+    featherless: 'mistralai/Mistral-7B-Instruct-v0.3',
     openai: 'gpt-4o',
     anthropic: 'claude-sonnet-4-5',
     groq: 'llama-3.3-70b-versatile',
@@ -54,7 +54,7 @@ const MODEL_PLACEHOLDERS: Record<LLMProvider, string> = {
 };
 
 const DEFAULT_MODEL_VALUES: Record<Exclude<LLMProvider, 'auto' | 'custom'>, string> = {
-    asi1: 'asi1',
+    featherless: 'mistralai/Mistral-7B-Instruct-v0.3',
     openai: 'gpt-4o',
     anthropic: 'claude-sonnet-4-5',
     groq: 'llama-3.3-70b-versatile',
@@ -62,7 +62,7 @@ const DEFAULT_MODEL_VALUES: Record<Exclude<LLMProvider, 'auto' | 'custom'>, stri
 };
 
 function isLLMProvider(value: string): value is LLMProvider {
-    return ['auto', 'asi1', 'openai', 'anthropic', 'groq', 'cerebras', 'custom'].includes(value);
+    return ['auto', 'featherless', 'openai', 'anthropic', 'groq', 'cerebras', 'custom'].includes(value);
 }
 
 function normalizeConfig(raw?: Partial<LLMConfig> | null): LLMConfig {
@@ -95,11 +95,11 @@ function isCustomConfigActive(config: LLMConfig) {
 
 function getPoweredByText(config: LLMConfig, lastProviderUsed: string) {
     const provider = lastProviderUsed || (!isCustomConfigActive(config) || config.provider === 'auto'
-        ? 'ASI-1'
+        ? 'featherless.ai'
         : PROVIDER_LABELS[config.provider]);
 
-    if (provider === 'ASI-1') {
-        return '\u26A1 Powered by ASI:One';
+    if (provider === 'featherless.ai') {
+        return 'POWERED BY FEATHERLESS.AI';
     }
 
     if (!isCustomConfigActive(config) || config.provider === 'auto') {
@@ -318,7 +318,7 @@ export default function QueryPanel({
                 <div className="ask-ai-pane-header">
                     <div className="ask-ai-header-copy">
                         <h2 className="ask-ai-title">ASK YOUR CODEBASE</h2>
-                        <p className={`ask-ai-provider-line ${poweredByLabel.includes('ASI:One') ? 'ask-ai-provider-line-asi' : ''}`}>{poweredByLabel}</p>
+                        <p className={`ask-ai-provider-line ${poweredByLabel.includes('FEATHERLESS.AI') ? 'ask-ai-provider-line-asi' : ''}`}>{poweredByLabel}</p>
                     </div>
                     <div className="ask-ai-header-actions">
                         {hasResult && (
@@ -365,8 +365,8 @@ export default function QueryPanel({
                             </select>
                         </label>
 
-                        {draftConfig.provider === 'asi1' && (
-                            <p className="ask-ai-subtitle">Primary provider - extended reasoning enabled</p>
+                        {draftConfig.provider === 'featherless' && (
+                            <p className="ask-ai-subtitle">Primary provider - featherless.ai inference enabled</p>
                         )}
 
                         <label className="ask-ai-settings-field">
@@ -401,12 +401,12 @@ export default function QueryPanel({
                             />
                         </label>
 
-                        {draftConfig.provider === 'asi1' && (
+                        {draftConfig.provider === 'featherless' && (
                             <label className="ask-ai-settings-field">
                                 <span>Base URL</span>
                                 <input
                                     type="text"
-                                    value="https://api.asi1.ai/v1"
+                                    value="https://api.featherless.ai/v1"
                                     readOnly
                                     className="ask-ai-settings-input"
                                 />

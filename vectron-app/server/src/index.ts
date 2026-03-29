@@ -69,7 +69,7 @@ interface LLMProvider {
   call: () => Promise<string>;
 }
 
-type LLMProviderKey = "auto" | "asi1" | "openai" | "anthropic" | "groq" | "cerebras" | "custom";
+type LLMProviderKey = "auto" | "featherless" | "openai" | "anthropic" | "groq" | "cerebras" | "custom";
 
 interface LLMConfigPayload {
   provider: string;
@@ -99,8 +99,8 @@ interface LLMCallResult {
 }
 
 interface LLMCallOptions {
-  asi1Temperature?: number;
-  asi1Reasoning?: boolean;
+  featherlessTemperature?: number;
+  featherlessReasoning?: boolean;
   maxTokens?: number;
 }
 
@@ -123,9 +123,9 @@ function hasValidGroqApiKey(): boolean {
   return !!apiKey && apiKey !== "PASTE_YOUR_KEY_HERE" && apiKey !== "your_actual_key_here";
 }
 
-function hasValidASI1ApiKey(): boolean {
-  const apiKey = process.env.ASI1_API_KEY || "";
-  return !!apiKey && apiKey !== "PASTE_YOUR_KEY_HERE" && apiKey !== "your_asi1_key_here";
+function hasValidFeatherlessApiKey(): boolean {
+  const apiKey = process.env.FEATHERLESS_API_KEY || "";
+  return !!apiKey && apiKey !== "PASTE_YOUR_KEY_HERE" && apiKey !== "your_featherless_key_here";
 }
 
 function hasValidCerebrasApiKey(): boolean {
@@ -134,13 +134,13 @@ function hasValidCerebrasApiKey(): boolean {
 }
 
 function isLLMProviderKey(value: string): value is LLMProviderKey {
-  return ["auto", "asi1", "openai", "anthropic", "groq", "cerebras", "custom"].includes(value);
+  return ["auto", "featherless", "openai", "anthropic", "groq", "cerebras", "custom"].includes(value);
 }
 
 function formatProviderName(provider: string): string {
   const labels: Record<string, string> = {
     auto: "Auto",
-    asi1: "ASI-1",
+    featherless: "featherless.ai",
     openai: "OpenAI",
     anthropic: "Anthropic",
     groq: "Groq",
@@ -163,7 +163,7 @@ function normalizeLLMConfig(config?: Partial<LLMConfigPayload> | null): CustomLL
   }
 
   const defaultModels: Record<Exclude<LLMProviderKey, "auto" | "custom">, string> = {
-    asi1: "asi1",
+    featherless: "mistralai/Mistral-7B-Instruct-v0.3",
     openai: "gpt-4o",
     anthropic: "claude-sonnet-4-5",
     groq: "llama-3.3-70b-versatile",
@@ -195,24 +195,24 @@ export async function callLLM(
 ): Promise<LLMCallResult> {
   const providers: LLMProvider[] = [
     {
-      name: "ASI-1",
-      isConfigured: hasValidASI1ApiKey(),
+      name: "featherless.ai",
+      isConfigured: hasValidFeatherlessApiKey(),
       call: async () => {
         const client = new OpenAI({
-          apiKey: process.env.ASI1_API_KEY,
-          baseURL: "https://api.asi1.ai/v1",
+          apiKey: process.env.FEATHERLESS_API_KEY,
+          baseURL: "https://api.featherless.ai/v1",
         });
         const request = {
-          model: "asi1",
+          model: "mistralai/Mistral-7B-Instruct-v0.3",
           messages: [
             { role: "system" as const, content: systemPrompt },
             { role: "user" as const, content: userMessage },
           ],
           max_tokens: options.maxTokens ?? 2048,
-          ...(typeof options.asi1Temperature === "number"
-            ? { temperature: options.asi1Temperature }
+          ...(typeof options.featherlessTemperature === "number"
+            ? { temperature: options.featherlessTemperature }
             : {}),
-          ...(options.asi1Reasoning ? { reasoning: true } : {}),
+          ...(options.featherlessReasoning ? { reasoning: true } : {}),
         };
         const res = await client.chat.completions.create(request);
         return res.choices[0]?.message?.content ?? "";
@@ -293,10 +293,10 @@ async function callLLMWithConfig(
   config: CustomLLMConfig,
   options: LLMCallOptions = {},
 ): Promise<LLMCallResult> {
-  if (config.provider === "asi1") {
+  if (config.provider === "featherless") {
     const client = new OpenAI({
       apiKey: config.apiKey,
-      baseURL: config.baseUrl || "https://api.asi1.ai/v1",
+      baseURL: config.baseUrl || "https://api.featherless.ai/v1",
     });
     const request = {
       model: config.model,
@@ -305,15 +305,15 @@ async function callLLMWithConfig(
         { role: "user" as const, content: userMessage },
       ],
       max_tokens: options.maxTokens ?? 1024,
-      ...(typeof options.asi1Temperature === "number"
-        ? { temperature: options.asi1Temperature }
+      ...(typeof options.featherlessTemperature === "number"
+        ? { temperature: options.featherlessTemperature }
         : {}),
-      ...(options.asi1Reasoning ? { reasoning: true } : {}),
+      ...(options.featherlessReasoning ? { reasoning: true } : {}),
     };
     const res = await client.chat.completions.create(request);
     return {
       content: res.choices[0]?.message?.content ?? "",
-      provider: "ASI-1",
+      provider: "featherless.ai",
     };
   }
 
@@ -386,13 +386,13 @@ async function callLLMWithConfig(
   throw new Error(`Unknown provider: ${config.provider}`);
 }
 
-async function callASI1Agent(systemPrompt: string, userMessage: string): Promise<string> {
+async function callFeatherlessAgent(systemPrompt: string, userMessage: string): Promise<string> {
   const client = new OpenAI({
-    apiKey: process.env.ASI1_API_KEY,
-    baseURL: "https://api.asi1.ai/v1",
+    apiKey: process.env.FEATHERLESS_API_KEY,
+    baseURL: "https://api.featherless.ai/v1",
   });
   const res = await client.chat.completions.create({
-    model: "asi1",
+    model: "mistralai/Mistral-7B-Instruct-v0.3",
     messages: [
       { role: "system" as const, content: systemPrompt },
       { role: "user" as const, content: userMessage },
@@ -405,16 +405,16 @@ async function callASI1Agent(systemPrompt: string, userMessage: string): Promise
 
 async function callAgentWithFallback(systemPrompt: string, userMessage: string): Promise<string> {
   try {
-    const result = (await callASI1Agent(systemPrompt, userMessage)).trim();
+    const result = (await callFeatherlessAgent(systemPrompt, userMessage)).trim();
     if (result) {
       return result;
     }
-    throw new Error("ASI-1 returned an empty response");
+    throw new Error("featherless.ai returned an empty response");
   } catch (error) {
-    console.warn("[ASI-1] Agent call failed, falling back to available LLM providers:", error);
+    console.warn("[featherless.ai] Agent call failed, falling back to available LLM providers:", error);
     const fallback = await callLLM(systemPrompt, userMessage, {
-      asi1Temperature: 0.2,
-      asi1Reasoning: true,
+      featherlessTemperature: 0.2,
+      featherlessReasoning: true,
       maxTokens: 1024,
     });
     return fallback.content;
@@ -779,7 +779,7 @@ app.post("/api/query", async (req, res) => {
     const summary = buildCompactGraphSummary(graphData);
 
     const systemPrompt = `You are an expert software architect analyzing a real codebase.
-You are powered by ASI:One - an intelligent AI that combines reasoning and analysis capabilities.
+You are powered by featherless.ai - an intelligent AI that combines reasoning and analysis capabilities.
 You have been given the actual nodes and edges of a dependency graph.
 
 When answering questions, you MUST follow this exact format:
@@ -968,7 +968,7 @@ Rules:
 - Mermaid syntax must be valid graph TD format`;
 
     const text = await callLLM(systemPrompt, `GRAPH DATA:\n${summary}`, {
-      asi1Reasoning: true,
+      featherlessReasoning: true,
       maxTokens: 4096,
     });
 
@@ -1062,8 +1062,8 @@ Be specific, technical, and useful. Write like a senior engineer.`;
       systemPrompt,
       `GRAPH DATA:\n${summary}\n\nEXACT STATS:\n- Total files parsed: ${stats.totalFiles}\n- Total functions detected: ${stats.totalFunctions}\n- Most connected component: ${stats.mostConnectedComponent} (${stats.mostConnectedDegree} connections)\n- Deepest dependency chain: ${stats.deepestDependencyChain} (${stats.deepestDependencyDepth} hops)`,
       {
-        asi1Temperature: 0.2,
-        asi1Reasoning: true,
+        featherlessTemperature: 0.2,
+        featherlessReasoning: true,
       },
     );
 
@@ -1189,7 +1189,7 @@ LEARNING PATH:
 
     res.json(payload);
   } catch (err: unknown) {
-    console.error("[ASI:One] Multi-agent analysis error:", err);
+    console.error("[featherless.ai] Multi-agent analysis error:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     res.status(500).json({ error: `Agent analysis failed: ${message}` });
   }

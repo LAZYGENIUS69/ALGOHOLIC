@@ -56,7 +56,7 @@ Upload any JS/TS repo as a ZIP. No signup. No setup.
 Click any node in the graph. VECTRON instantly runs a BFS propagation to show every downstream dependency that breaks if you change it. Color-coded by impact depth — red is direct, orange is one hop, yellow is two hops.
 
 ### 🤖 AI Codebase Query
-Ask anything about your codebase in plain English. VECTRON sends a compressed graph summary to ASI-1 first, then falls back to Groq and Cerebras if needed, and returns a precise answer with a call chain while simultaneously highlighting the relevant nodes on the graph.
+Ask anything about your codebase in plain English. VECTRON sends a compressed graph summary to featherless.ai first, then falls back to Groq and Cerebras if needed, and returns a precise answer with a call chain while simultaneously highlighting the relevant nodes on the graph.
 
 ### 📊 Metrics Dashboard
 Risk scores, dependency hotspots, node type distribution, top 10 most connected nodes. Instantly identifies your most fragile code.
@@ -76,7 +76,7 @@ Click any node to instantly see its complete intelligence profile:
 Select any two nodes and VECTRON traces the exact execution path between them through the dependency graph. See how data flows from a user action all the way through to the output — every hop, every function call, every file transition visualized as a Mermaid flowchart.
 
 ### 📄 Codebase Intelligence Report
-One click generates a full architecture document — executive summary, component breakdown, risk assessment, onboarding guide. Powered by ASI-1 with Groq and Cerebras as fallback
+One click generates a full architecture document — executive summary, component breakdown, risk assessment, onboarding guide. Powered by featherless.ai with Groq and Cerebras as fallback
 
 Five specialized AI agents analyze your codebase simultaneously:
 
@@ -94,7 +94,7 @@ Five specialized AI agents analyze your codebase simultaneously:
 
 ### 🤖 Custom LLM Configuration
 Bring your own API key. Configure any LLM provider directly in the UI:
-- ASI:One (default, primary)
+- featherless.ai (default, primary)
 - OpenAI
 - Anthropic
 - Groq
@@ -146,11 +146,11 @@ AI (without VECTRON):
 
 ---
 
-## Powered by ASI:One
+## Powered by featherless.ai
 
-VECTRON uses ASI:One as its primary intelligence layer.
+VECTRON uses featherless.ai as its primary intelligence layer.
 
-ASI:One's unique capabilities enable:
+featherless.ai's unique capabilities enable:
 
 Multi-Agent Orchestration — 5 specialized agents run in parallel, each with domain expertise, reasoning independently before synthesizing results
 
@@ -158,11 +158,11 @@ Extended Reasoning — deep multi-step analysis for the Intelligence Report, bre
 
 Unified Intelligence — one model that automatically activates the right reasoning mode based on the task — fast inference for queries, extended reasoning for reports, agentic orchestration for analysis
 
-To use VECTRON with your own ASI:One key:
+To use VECTRON with your own featherless.ai key:
 1. Open the ASK AI tab
 2. Click the gear icon
-3. Select ASI:One as provider
-4. Enter your API key from api.asi1.ai
+3. Select featherless.ai as provider
+4. Enter your API key from api.featherless.ai
 
 ---
 
@@ -182,7 +182,7 @@ flowchart TD
     G --> H
     H --> I[(In-Memory Graph Store)]
     I --> J[Sigma.js Renderer]
-    I --> K[ASI-1 / Groq / Cerebras]
+    I --> K[featherless.ai / Groq / Cerebras]
     I --> L[MCP Server :3002]
     J --> M[ForceAtlas2 Layout]
     M --> N[Interactive Graph]
@@ -248,17 +248,17 @@ http://localhost:3002/sse
 ```env
 GROQ_API_KEY=your_groq_key_here
 CEREBRAS_API_KEY=your_cerebras_key_here
-ASI1_API_KEY=your_asi1_key_here
+FEATHERLESS_API_KEY=your_featherless_key_here
 PORT=3001
 ```
 
-Get your ASI:One API key free at: https://api.asi1.ai
+Get your featherless.ai API key free at: https://api.featherless.ai
 
 Get free API keys:
 - Groq: [console.groq.com](https://console.groq.com)
 - Cerebras: [inference.cerebras.ai](https://inference.cerebras.ai)
 
-For Railway, add `ASI1_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, and `PORT` in the service environment variables before deploying.
+For Railway, add `FEATHERLESS_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, and `PORT` in the service environment variables before deploying.
 
 ---
 
@@ -270,9 +270,9 @@ For Railway, add `ASI1_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, and `PORT` 
 | Graph Rendering | Sigma.js + Graphology + ForceAtlas2 |
 | Backend | Express.js + Node.js |
 | AST Parsing | Babel (JS/TS/JSX/TSX) |
-| AI Primary | ASI-1 — `asi1` |
+| AI Primary | featherless.ai — `mistralai/Mistral-7B-Instruct-v0.3` |
 | AI Fallback | Groq, then Cerebras |
-| ASI:One API | Primary AI provider — multi-agent orchestration |
+| featherless.ai API | Primary AI provider — multi-agent orchestration |
 | Groq | Fallback LLM — Llama 3.3 70B |
 | Cerebras | Fallback LLM — Llama 3.1 8B |
 | Process Diagrams | Mermaid.js |
@@ -320,7 +320,7 @@ For Railway, add `ASI1_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, and `PORT` 
 
 ## What's Next
 
-- ASI:One Agentverse Integration — register custom VECTRON agents on the Agentverse marketplace for deeper orchestration
+- featherless.ai Agentverse Integration — register custom VECTRON agents on the Agentverse marketplace for deeper orchestration
 
 ---
 
@@ -340,7 +340,7 @@ graph TD
     H --> I[Risk Scoring]
     I --> G
 
-    D --> J[ASI-1 LLM\nasi1]
+    D --> J[featherless.ai LLM\nmistralai/Mistral-7B-Instruct-v0.3]
     J --> K[AI Query]
     J --> L[Process Detection]
     J --> M[Intelligence Report]
