@@ -89,12 +89,6 @@ function isCustomConfigActive(config: LLMConfig) {
     return config.provider !== 'auto' && config.apiKey.trim().length > 0;
 }
 
-function getPoweredByText(config: LLMConfig, lastProviderUsed: string) {
-    void config;
-    void lastProviderUsed;
-    return '';
-}
-
 function GearIcon() {
     return (
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -190,11 +184,6 @@ export default function QueryPanel({
         if (draftConfig.provider === 'custom' && !draftConfig.model.trim()) return false;
         return true;
     }, [draftConfig]);
-    const poweredByLabel = useMemo(
-        () => getPoweredByText(savedConfig, lastProviderUsed),
-        [lastProviderUsed, savedConfig],
-    );
-
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -304,9 +293,6 @@ export default function QueryPanel({
                 <div className="ask-ai-pane-header">
                     <div className="ask-ai-header-copy">
                         <h2 className="ask-ai-title">ASK YOUR CODEBASE</h2>
-                        {poweredByLabel ? (
-                            <p className="ask-ai-provider-line">{poweredByLabel}</p>
-                        ) : null}
                     </div>
                     <div className="ask-ai-header-actions">
                         {hasResult && (
