@@ -69,7 +69,7 @@ interface LLMProvider {
   call: () => Promise<string>;
 }
 
-type LLMProviderKey = "auto" | "featherless" | "openai" | "anthropic" | "groq" | "cerebras" | "custom";
+type LLMProviderKey = "auto" | "openai" | "anthropic" | "groq" | "cerebras" | "custom";
 
 interface LLMConfigPayload {
   provider: string;
@@ -99,8 +99,8 @@ interface LLMCallResult {
 }
 
 interface LLMCallOptions {
-  featherlessTemperature?: number;
-  featherlessReasoning?: boolean;
+  primaryTemperature?: number;
+  primaryReasoning?: boolean;
   maxTokens?: number;
 }
 
@@ -123,24 +123,18 @@ function hasValidGroqApiKey(): boolean {
   return !!apiKey && apiKey !== "PASTE_YOUR_KEY_HERE" && apiKey !== "your_actual_key_here";
 }
 
-function hasValidFeatherlessApiKey(): boolean {
-  const apiKey = process.env.FEATHERLESS_API_KEY || "";
-  return !!apiKey && apiKey !== "PASTE_YOUR_KEY_HERE" && apiKey !== "your_featherless_key_here";
-}
-
 function hasValidCerebrasApiKey(): boolean {
   const apiKey = process.env.CEREBRAS_API_KEY || "";
   return !!apiKey && apiKey !== "PASTE_YOUR_KEY_HERE" && apiKey !== "your_key_here";
 }
 
 function isLLMProviderKey(value: string): value is LLMProviderKey {
-  return ["auto", "featherless", "openai", "anthropic", "groq", "cerebras", "custom"].includes(value);
+  return ["auto", "openai", "anthropic", "groq", "cerebras", "custom"].includes(value);
 }
 
 function formatProviderName(provider: string): string {
   const labels: Record<string, string> = {
     auto: "Auto",
-    featherless: "featherless.ai",
     openai: "OpenAI",
     anthropic: "Anthropic",
     groq: "Groq",
@@ -163,7 +157,6 @@ function normalizeLLMConfig(config?: Partial<LLMConfigPayload> | null): CustomLL
   }
 
   const defaultModels: Record<Exclude<LLMProviderKey, "auto" | "custom">, string> = {
-    featherless: "mistralai/Mistral-7B-Instruct-v0.3",
     openai: "gpt-4o",
     anthropic: "claude-sonnet-4-5",
     groq: "llama-3.3-70b-versatile",
@@ -195,30 +188,6 @@ export async function callLLM(
 ): Promise<LLMCallResult> {
   const providers: LLMProvider[] = [
     {
-      name: "featherless.ai",
-      isConfigured: hasValidFeatherlessApiKey(),
-      call: async () => {
-        const client = new OpenAI({
-          apiKey: process.env.FEATHERLESS_API_KEY,
-          baseURL: "https://api.featherless.ai/v1",
-        });
-        const request = {
-          model: "mistralai/Mistral-7B-Instruct-v0.3",
-          messages: [
-            { role: "system" as const, content: systemPrompt },
-            { role: "user" as const, content: userMessage },
-          ],
-          max_tokens: options.maxTokens ?? 2048,
-          ...(typeof options.featherlessTemperature === "number"
-            ? { temperature: options.featherlessTemperature }
-            : {}),
-          ...(options.featherlessReasoning ? { reasoning: true } : {}),
-        };
-        const res = await client.chat.completions.create(request);
-        return res.choices[0]?.message?.content ?? "";
-      },
-    },
-    {
       name: "Groq",
       isConfigured: hasValidGroqApiKey(),
       call: async () => {
@@ -229,7 +198,9 @@ export async function callLLM(
             { role: "user" as const, content: userMessage },
           ],
           max_tokens: options.maxTokens ?? 2048,
-          temperature: 0.3,
+          ...(typeof options.primaryTemperature === "number"
+            ? { temperature: options.primaryTemperature }
+            : { temperature: 0.3 }),
         });
         return (res as LLMCompletionResponse).choices?.[0]?.message?.content ?? "";
       },
@@ -293,30 +264,6 @@ async function callLLMWithConfig(
   config: CustomLLMConfig,
   options: LLMCallOptions = {},
 ): Promise<LLMCallResult> {
-  if (config.provider === "featherless") {
-    const client = new OpenAI({
-      apiKey: config.apiKey,
-      baseURL: config.baseUrl || "https://api.featherless.ai/v1",
-    });
-    const request = {
-      model: config.model,
-      messages: [
-        { role: "system" as const, content: systemPrompt },
-        { role: "user" as const, content: userMessage },
-      ],
-      max_tokens: options.maxTokens ?? 1024,
-      ...(typeof options.featherlessTemperature === "number"
-        ? { temperature: options.featherlessTemperature }
-        : {}),
-      ...(options.featherlessReasoning ? { reasoning: true } : {}),
-    };
-    const res = await client.chat.completions.create(request);
-    return {
-      content: res.choices[0]?.message?.content ?? "",
-      provider: "featherless.ai",
-    };
-  }
-
   if (config.provider === "openai" || config.provider === "custom") {
     const client = new OpenAI({
       apiKey: config.apiKey,
@@ -386,39 +333,12 @@ async function callLLMWithConfig(
   throw new Error(`Unknown provider: ${config.provider}`);
 }
 
-async function callFeatherlessAgent(systemPrompt: string, userMessage: string): Promise<string> {
-  const client = new OpenAI({
-    apiKey: process.env.FEATHERLESS_API_KEY,
-    baseURL: "https://api.featherless.ai/v1",
-  });
-  const res = await client.chat.completions.create({
-    model: "mistralai/Mistral-7B-Instruct-v0.3",
-    messages: [
-      { role: "system" as const, content: systemPrompt },
-      { role: "user" as const, content: userMessage },
-    ],
-    max_tokens: 1024,
-    temperature: 0.2,
-  });
-  return res.choices[0]?.message?.content ?? "";
-}
-
 async function callAgentWithFallback(systemPrompt: string, userMessage: string): Promise<string> {
-  try {
-    const result = (await callFeatherlessAgent(systemPrompt, userMessage)).trim();
-    if (result) {
-      return result;
-    }
-    throw new Error("featherless.ai returned an empty response");
-  } catch (error) {
-    console.warn("[featherless.ai] Agent call failed, falling back to available LLM providers:", error);
-    const fallback = await callLLM(systemPrompt, userMessage, {
-      featherlessTemperature: 0.2,
-      featherlessReasoning: true,
-      maxTokens: 1024,
-    });
-    return fallback.content;
-  }
+  const fallback = await callLLM(systemPrompt, userMessage, {
+    primaryTemperature: 0.2,
+    maxTokens: 1024,
+  });
+  return fallback.content;
 }
 
 function buildCompactGraphSummary(graphData: GraphData): string {
@@ -779,7 +699,6 @@ app.post("/api/query", async (req, res) => {
     const summary = buildCompactGraphSummary(graphData);
 
     const systemPrompt = `You are an expert software architect analyzing a real codebase.
-You are powered by featherless.ai - an intelligent AI that combines reasoning and analysis capabilities.
 You have been given the actual nodes and edges of a dependency graph.
 
 When answering questions, you MUST follow this exact format:
@@ -968,7 +887,6 @@ Rules:
 - Mermaid syntax must be valid graph TD format`;
 
     const text = await callLLM(systemPrompt, `GRAPH DATA:\n${summary}`, {
-      featherlessReasoning: true,
       maxTokens: 4096,
     });
 
@@ -1062,8 +980,7 @@ Be specific, technical, and useful. Write like a senior engineer.`;
       systemPrompt,
       `GRAPH DATA:\n${summary}\n\nEXACT STATS:\n- Total files parsed: ${stats.totalFiles}\n- Total functions detected: ${stats.totalFunctions}\n- Most connected component: ${stats.mostConnectedComponent} (${stats.mostConnectedDegree} connections)\n- Deepest dependency chain: ${stats.deepestDependencyChain} (${stats.deepestDependencyDepth} hops)`,
       {
-        featherlessTemperature: 0.2,
-        featherlessReasoning: true,
+        primaryTemperature: 0.2,
       },
     );
 
@@ -1189,7 +1106,7 @@ LEARNING PATH:
 
     res.json(payload);
   } catch (err: unknown) {
-    console.error("[featherless.ai] Multi-agent analysis error:", err);
+    console.error("[multi-agent] Analysis error:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     res.status(500).json({ error: `Agent analysis failed: ${message}` });
   }

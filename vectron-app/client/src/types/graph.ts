@@ -53,7 +53,7 @@ export interface AgentAnalysisResponse {
     generatedAt: string;
 }
 
-export type LLMProvider = 'auto' | 'featherless' | 'openai' | 'anthropic' | 'groq' | 'cerebras' | 'custom';
+export type LLMProvider = 'auto' | 'openai' | 'anthropic' | 'groq' | 'cerebras' | 'custom';
 
 export interface LLMConfig {
     provider: LLMProvider;
