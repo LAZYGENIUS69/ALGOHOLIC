@@ -137,8 +137,14 @@ export default function NodeIntelligence({ selectedNode, graph }: NodeIntelligen
         }
 
         return (
-            <div className="node-intel-pill-scroller">
-                <div className="node-intel-pill-row">
+            <div
+                className="node-intel-pill-scroller"
+                style={{ maxHeight: 'none', overflow: 'visible' }}
+            >
+                <div
+                    className="node-intel-pill-row"
+                    style={{ overflow: 'visible' }}
+                >
                     {nodes.map((node) => (
                         <span key={node.id} className="node-intel-pill" title={node.label}>
                             <span
@@ -156,7 +162,10 @@ export default function NodeIntelligence({ selectedNode, graph }: NodeIntelligen
 
     if (!selectedNode || !intelligence) {
         return (
-            <section className="node-intelligence">
+            <section
+                className="node-intelligence"
+                style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden' }}
+            >
                 <div className="node-intel-empty">
                     <div className="empty-state empty-state-fill">
                         <strong>No node selected</strong>
@@ -170,7 +179,10 @@ export default function NodeIntelligence({ selectedNode, graph }: NodeIntelligen
     const riskColor = RISK_COLORS[intelligence.riskStatus];
 
     return (
-        <section className="node-intelligence">
+        <section
+            className="node-intelligence"
+            style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden' }}
+        >
             <div className="node-intel-header">
                 <div className="node-intel-title-wrap">
                     <span
@@ -222,16 +234,22 @@ export default function NodeIntelligence({ selectedNode, graph }: NodeIntelligen
                 {renderPills(intelligence.dependencyIncoming)}
             </div>
 
-            <div className="node-intel-summary-block">
+            <div
+                className="node-intel-summary-block"
+                style={{ overflow: 'visible', minHeight: 'fit-content' }}
+            >
                 <div className="node-intel-label">AI SUMMARY</div>
                 {loadingSummary ? (
                     <div className="node-intel-summary-loading">
                         <span className="spinner" />
                     </div>
                 ) : (
-                    <div className="node-intel-summary-scroll">
-                        <p className="node-intel-summary">{summary}</p>
-                    </div>
+                    <p
+                        className="node-intel-summary"
+                        style={{ maxHeight: 'none', overflow: 'visible' }}
+                    >
+                        {summary}
+                    </p>
                 )}
             </div>
         </section>
