@@ -3,6 +3,7 @@ import * as babelParser from "@babel/parser";
 import traverse from "@babel/traverse";
 import * as t from "@babel/types";
 
+// babel AST parser optimized
 export type ParsedNodeType =
   | "class"
   | "method"
