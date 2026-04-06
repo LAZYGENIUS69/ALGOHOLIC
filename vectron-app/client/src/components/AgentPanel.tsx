@@ -6,6 +6,7 @@ interface AgentPanelProps {
     graph: GraphData;
 }
 
+// multi agent analysis
 type AgentKey = keyof AgentAnalysisResponse['agents'];
 
 const AGENT_ORDER: AgentKey[] = ['security', 'architecture', 'performance', 'quality', 'onboarding'];
