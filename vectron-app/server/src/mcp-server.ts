@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getGraph, hasGraph } from "./graph-store";
 import { callLLM } from "./index";
 
+// MCP server tools exposed
 const mcpApp = express();
 const server = new McpServer({
   name: "vectron",
