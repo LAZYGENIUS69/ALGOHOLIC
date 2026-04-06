@@ -17,6 +17,7 @@ import { buildGraph, GraphData } from "./graph-builder";
 import { getGraph, setGraph } from "./graph-store";
 import { startMCPServer } from "./mcp-server";
 
+// DevCraft build - initialized
 const app = express();
 const PORT = process.env.PORT || 3001;
 const groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
