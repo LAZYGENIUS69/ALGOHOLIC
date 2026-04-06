@@ -15,6 +15,7 @@ interface QueryPanelProps {
     onClearQuery: () => void;
 }
 
+// AI query panel
 const STORAGE_KEY = 'vectron_llm_config';
 const DEFAULT_LLM_CONFIG: LLMConfig = {
     provider: 'auto',
