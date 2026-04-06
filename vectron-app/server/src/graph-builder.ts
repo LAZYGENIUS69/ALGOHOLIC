@@ -1,6 +1,7 @@
 import path from "path";
 import { parseFile } from "./parser";
 
+// graph builder optimized
 export type NodeKind = "file" | "function";
 export type EdgeKind =
   | "IMPORTS"
