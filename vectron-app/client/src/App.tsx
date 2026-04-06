@@ -15,6 +15,7 @@ import ReportModal from './components/ReportModal';
 import MetricsDashboard from './components/MetricsDashboard';
 import AgentPanel from './components/AgentPanel';
 
+// core app structure initialized
 type AppTab = 'graph' | 'processes' | 'ask-ai' | 'metrics' | 'report' | 'agents';
 type LeftSidebarTab = 'explorer' | 'filters';
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 768px)';
